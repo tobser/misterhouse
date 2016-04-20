@@ -1427,6 +1427,8 @@ var fp_display_height=0;
 
 var fp_resize_flooplan_image = function(){
     var floor_width = $("#fp_graphic").width();
+    $("#fp_graphic").attr("width", "1px");
+
     fp_display_width = $("#graphic").width();
     console.log("FP: resize "+ floor_width + " => " + fp_display_width);
     $('#fp_graphic').attr("width",fp_display_width+"px");
