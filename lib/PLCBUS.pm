@@ -1941,9 +1941,9 @@ sub new {
     my $class = shift;
     my $self = $class->SUPER::new(@_);
     $self->set_states(qw |up down status_req|);
-    $self->_log("New Rollo!");
     return $self;
 }
+
 sub set{
     my ( $self, $state, $setby, $respond ) = @_;
     my $home = $self->{home};
