@@ -193,12 +193,14 @@ sub json_get {
 
         eval {
             my $prefs = file_read($prefs_file);
-            $json_data{'ia7_config'} =
-              decode_json($prefs);  #HP, wrap this in eval to prevent MH crashes
+            my $json = new JSON::XS;
+            $json->relaxed();
+
+            $json_data{'ia7_config'} = $json->decode($prefs);
         };
         if ($@) {
             print_log
-              "Json_Server.pl: WARNING: decode_json failed for ia7_config.json. Please check this file!";
+              "Json_Server.pl: WARNING: decode_json failed for ia7_config.json. Please check this file: $@";
             $json_data{'ia7_config'} =
               decode_json('{ "prefs" : { "status" : "error" } }')
               ;                     #write a blank collection
@@ -616,6 +618,14 @@ sub json_get {
             $json_data{'print_log'} = [];
             push( @{ $json_data{'print_log'} }, @log );
         }
+    }
+
+    if ( $path[0] eq 'fp_icon_sets' ){
+        my $p = "../web/ia7/graphics/*default_".$args{px}[0].".png";
+        my @icons = glob($p);
+        s/^..\/web// for @icons;
+        $json_data{'icon_sets'} = [];
+        push( @{ $json_data{'fp_icon_sets'} }, @icons);
     }
 
     # List speak phrases
