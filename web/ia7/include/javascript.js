@@ -7,7 +7,7 @@ var entity_store = {}; //global storage of entities
 var json_store = {};
 var updateSocket;
 var display_mode;
-if (display_mode == undefined) display_mode = "simple";
+if (display_mode === undefined) display_mode = "simple";
 
 
 //Takes the current location and parses the achor element into a hash
@@ -362,7 +362,7 @@ var loadList = function() {
 					// This is not an entity, likely a value of the root obj
 					continue;
 				}
-				if (json_store.objects[entity].hidden != undefined){
+				if (json_store.objects[entity].hidden !== undefined){
 					// This is an entity with the hidden property, so skip it
 					continue;
 				}
@@ -501,7 +501,8 @@ var loadList = function() {
                          	if (filterSubstate(json_store.objects[entity].states[i]) == 1) continue;
                          	//console.log("state "+i+" is "+json_store.objects[entity].states[i])
                          	possible_states++;
-                         	if (json_store.objects[entity].states[i] !== json_store.objects[entity].state) new_state = json_store.objects[entity].states[i]
+				if (json_store.objects[entity].states[i] !== json_store.objects[entity].state) new_state = json_store.objects[entity].states[i];
+
                          	}
                         //console.log("End states = "+i+" new_state="+new_state)
 						if ((possible_states > 2) || (new_state == "")) alert("Check configuration of "+entity+". "+possible_states+" states detected for direct control object. State is "+new_state);
@@ -1204,13 +1205,16 @@ var graph_rrd = function(start,group,time) {
 	});
 };
 
+var noDragDrop = function() {
+    return false;
+};
 var floorplan = function(group,time) {
     var URLHash = URLToHash();
     var baseimg_width;
     if (typeof time === 'undefined'){
         //var window_width = $(window).width();
         $('#list_content').html("<div id='floorplan' class='row top-buffer'>");
-        if (URLHash['show_pos']){
+        if (URLHash.show_pos){
             // add elememnts to show current position on floorplan
             $('#floorplan').append("<center>"
                     + "     <input type='checkbox' id='popup' name='popup'>"
@@ -1222,7 +1226,10 @@ var floorplan = function(group,time) {
         $('#floorplan').append("<div id='graphic' class='col-sm-12 col-sm-offset-0 col-md-10 col-md-offset-1 col-lg-8 col-lg-offset-2'>");
         time = 0;
         $('#graphic').prepend('<center><img id="fp_graphic" border="1"  /></center>');
-        if (URLHash['show_pos']) $('#fp_graphic').css("border","1px solid black");
+        if (URLHash.show_pos){
+            $('#fp_graphic').css("border","1px solid black");
+            $('#list_content').append("<pre id='fp_pos_perl_code' />");
+        }
         $('#fp_graphic').bind("load", function () {
             console.log("FP: background loaded.");
             fp_resize_flooplan_image();
@@ -1237,7 +1244,7 @@ var floorplan = function(group,time) {
         updateSocket.abort();
     }
 
-    if (URLHash['show_pos']){
+    if (URLHash.show_pos){
         // update positon
 
         $(document).mousemove(function(e){
@@ -1246,21 +1253,106 @@ var floorplan = function(group,time) {
             var hight = $("#fp_graphic").height();
             var  l = e.pageX - offset.left;
             var  t = e.pageY - offset.top;
-            if (l < 0 ) return;
-            if (t < 0 ) return;
-            if (l > width) return;
-            if (t > hight)  return;
+            var onFp = true;
+            if (l < 0 ) onFp = false;
+            if (t < 0 ) onFp = false;
+            if (l > width) onFp = false;
+            if (t > hight)  onFp = false;
 
             var pos =   Math.round((t/hight) *100) +"," + Math.round((l/width)*100);
             //console.log("floorplanpos: " + pos );
             $('#debug_pos').text(pos);
+            if (grabbedEntity != null){
+                var itemCenterOffset = Math.round(grabbedEntity.width/2);
+                var newPos = {
+                    "top": e.pageY - itemCenterOffset,
+                    "left": e.pageX - itemCenterOffset
+                };
+                $("#" + grabbedEntity.id).offset(newPos);
+                //console.log(grabbedEntity.id +" pos: " +newPos.top + " x " + newPos.left);
+                //grabbedEntity.class.replace("coords=.*", "coords="+pos);
+            }
         });
         $('#fp_graphic').click(function(e){
             if ($('#popup').is(':checked')){
                 window.prompt("Copy to clipboard: Ctrl+C", $('#debug_pos').text());
             }
         });
+
+
+        var grabbedPrevOffset = null;
+        var grabbedEntity = null;
+        $(window).mousedown(function(e){
+            if (e.target.id.contains("entity_")){
+                grabbedEntity = e.target;
+                grabbedPrevOffset = $('#'+grabbedEntity.id).offset();
+                e.stopPropagation();
+                return true;
+            }
+        });
+        $(window).mouseup(function(e){
+            if (grabbedEntity === null)
+                return;
+
+            set_set_coordinates_from_offset(grabbedEntity.id);
+            fp_reposition_entities();
+            grabbedEntity = null;
+            grabbedPrevOffset = null;
+        });
+
     }
+
+    var set_set_coordinates_from_offset = function (id)
+    {
+        var E = $('#'+id);
+        var offsetE = E.offset();
+        offsetE.top += Math.round(E.width()/2);
+        offsetE.left += Math.round(E.width()/2);
+        var offsetP = $("#fp_graphic").offset();
+        var width = fp_display_width;
+        var hight = fp_display_height;
+        var onePercentWidthInPx = width/100;
+        var onePercentHeightInPx = hight/100;
+
+        var newy = Math.round( (offsetE.top - offsetP.top) / onePercentHeightInPx);
+        var newx = Math.round( (offsetE.left - offsetP.left) / onePercentWidthInPx);
+        var coords = newy+"x"+newx;
+
+        E.attr("class", "entity="+id+" flooplan_item coords="+coords);
+
+
+        var name = id.match(/entity_(.*)_(\d)+$/)[1];
+        var coordIdx = id.match(/entity_(.*)_(\d)+$/)[2];
+
+        var codeLines = $("#fp_pos_perl_code").text().split('\n');
+        var newCode = "";
+
+        var itemUpdated = false;
+        for (var i = 0; i< codeLines.length; i++)
+        {
+            var line = codeLines[i];
+            if (line.startsWith("$"+name))
+            {
+                var m = line.match(/.*\((.*)\).*/);
+                oldCoords = m[1].split(",");
+                oldCoords[+coordIdx] = newy;
+                oldCoords[+coordIdx+1] = newx;
+                var newline = "$" + name + "->set_fp_location("+ oldCoords.join(",") + ");\n";
+                newCode += newline;
+                itemUpdated = true;
+            }
+            else if (line !== "")
+            {
+                newCode += line + "\n";
+            }
+        }
+        if (itemUpdated === false)
+        {
+            var newline = "$" + name + "->set_fp_location("+ newy +","+ newx + ");\n";
+            newCode += newline;
+        }
+        $("#fp_pos_perl_code").text(newCode);
+    };
 
     // reposition on window size change
     window.onresize = function(){
@@ -1270,7 +1362,7 @@ var floorplan = function(group,time) {
         console.log("FP: window resized");
         fp_resize_flooplan_image();
         fp_reposition_entities();
-    }
+    };
 
     var path_str = "/objects";
     var fields = "fields=fp_location,state,states,fp_icons,fp_icon_set,img,link,label,type";
@@ -1293,120 +1385,132 @@ var floorplan = function(group,time) {
                 var t0 = performance.now();
                 JSONStore(json);
                 for (var entity in json.data) {
+                    var perl_pos_code = "";
+                    if (URLHash.show_pos){
+                       perl_pos_code = "$" + entity + "->set_fp_location(";
+                       perl_pos_coords = "";
+                    }
                     for (var i=0 ; i < json.data[entity].fp_location.length-1; i=i+2){ //allow for multiple graphics
                         var popover = 0;
                         if ((json.data[entity].type == "FPCamera_Item") || (json_store.ia7_config.prefs.fp_state_popovers == "yes"))
                             popover = 1;
 
-                        var popover_html = "";
-                        if (popover)
-                            popover_html = 'data-toggle="popover" data-trigger="focus" tabindex="0"';
-
-                       var entityId = 'entity_'+entity+'_'+i;
-
-                       if ($('#entity_'+entity+'_'+i).length == 0) {
-                           var coords= json.data[entity].fp_location[i]+'x'+json.data[entity].fp_location[i+1];
-                           $('#graphic').append(
-                                   '<span style="display: inline-block">'  +
-                                        '<img '+popover_html+' ' +
-                                            'id="'+entityId+'"' +
-                                            'class="entity='+entity+'_'+i+' floorplan_item coords='+coords+'" '+
-                                        '/>' +
-                                    '</span>');
+                       if (URLHash.show_pos){
+                           if (perl_pos_coords.length !== 0){
+                               perl_pos_coords += ", ";
+                           }
+                           perl_pos_coords += "" + json.data[entity].fp_location[i]+','+json.data[entity].fp_location[i+1];
                        }
 
-                        var E = $('#'+entityId);
+                       var coords= json.data[entity].fp_location[i]+'x'+json.data[entity].fp_location[i+1];
+                       var E = fp_getOrCreateIcon(json, entity, i, coords, URLHash.show_pos);
 
-                        var image = get_fp_image(json.data[entity]);
-                        E.attr('src',"/ia7/graphics/"+image);
-                        if (URLHash['show_pos'])
-                            E.css("border","1px solid black");
+                       if (URLHash.show_pos === undefined)
+                       {
+                           // create unique popovers for Camera items
+                           if (json.data[entity].type == "FPCamera_Item") {
+                               var name = entity;
+                               if (json.data[entity].label !== undefined)
+                                   name = json.data[entity].label;
 
-                        // create unique popovers for Camera items
-                        if (json.data[entity].type == "FPCamera_Item") {
-                            var name = entity;
-                            if (json.data[entity].label !== undefined)
-                                name = json.data[entity].label;
+                               var a_start = "";
+                               var a_end = "";
+                               if (json.data[entity].link !== undefined) {
+                                   a_start = '<a href="'+json.data[entity].link+'">';
+                                   a_end = '</a>';
+                               }
 
-                            var a_start = "";
-                            var a_end = "";
-                            if (json.data[entity].link !== undefined) {
-                                a_start = '<a href="'+json.data[entity].link+'">';
-                                a_end = '</a>';
-                            }
+                               $('[data-toggle="popover"]').popover({
+                                   placement : 'auto bottom', //placement of the popover. also can use top, bottom, left or right
+                                   title : name,
+                                   html: 'true', //needed to show html of course
+                                   content : '<div id="popOverBox">'+a_start+'<img src="'+json.data[entity].img+'" width="251" height="201" />'+a_end+'</div>'
+                               });
+                           } else {
+                               if (popover) {
 
-                            $('[data-toggle="popover"]').popover({
-                                placement : 'auto bottom', //placement of the popover. also can use top, bottom, left or right
-                                title : name,
-                                html: 'true', //needed to show html of course
-                                content : '<div id="popOverBox">'+a_start+'<img src="'+json.data[entity].img+'" width="251" height="201" />'+a_end+'</div>'
-                            });
-                        } else {
-                            if (popover) {
+                                   $('[data-toggle="popover"]').popover({
+                                       placement : 'auto bottom', //placement of the popover. also can use top, bottom, left or right
+                                       title : function() {
+                                           var fp_entity = $(this).attr("id").match(/entity_(.*)_\d+$/)[1]; //strip out entity_ and ending _X ... item names can have underscores in them.
+                                           var name = fp_entity;
+                                           if (json_store.objects[fp_entity].label !== undefined) name = json_store.objects[fp_entity].label;
+                                           var ackt = E.offset();
+                                           return name+ " - "+json_store.objects[fp_entity].state;
+                                       },
+                                       html: 'true', //needed to show html of course
+                                       content : function() {
+                                           var fp_entity = $(this).attr("id").match(/entity_(.*)_\d+$/)[1]; //strip out entity_ and ending _X ... item names can have underscores in them.
+                                           var po_states = json_store.objects[fp_entity].states;
+                                           var html = '<div id="popOverBox">';
+                                           // HP need to have at least 2 states to be a controllable object...
+                                           if (po_states.length > 1) {
+                                               html = '<div class="btn-group stategrp0 btn-block">';
+                                               var buttons = 0;
+                                               var stategrp = 0;
+                                               for (var i = 0; i < po_states.length; i++){
+                                                   if (filterSubstate(po_states[i]) !== 1) {
+                                                       buttons++;
+                                                       if (buttons > 2) {
+                                                           stategrp++;
+                                                           html += "</div><div class='btn-group btn-block stategrp"+stategrp+"'>";
+                                                           buttons = 1;
+                                                       }
 
-                                $('[data-toggle="popover"]').popover({
-                                    placement : 'auto bottom', //placement of the popover. also can use top, bottom, left or right
-                                    title : function() {
-                                        var fp_entity = $(this).attr("id").match(/entity_(.*)_\d+$/)[1]; //strip out entity_ and ending _X ... item names can have underscores in them.
-                                        var name = fp_entity;
-                                        if (json_store.objects[fp_entity].label !== undefined) name = json_store.objects[fp_entity].label;
-                                        var ackt = E.offset();
-                                        return name+ " - "+json_store.objects[fp_entity].state;
-                                    },
-                                    html: 'true', //needed to show html of course
-                                    content : function() {
-                                        var fp_entity = $(this).attr("id").match(/entity_(.*)_\d+$/)[1]; //strip out entity_ and ending _X ... item names can have underscores in them.
-                                        var po_states = json_store.objects[fp_entity].states;
-                                        var html = '<div id="popOverBox">';
-                                        // HP need to have at least 2 states to be a controllable object...
-                                        if (po_states.length > 1) {
-                                            html = '<div class="btn-group stategrp0 btn-block">';
-                                            var buttons = 0;
-                                            var stategrp = 0;
-                                            for (var i = 0; i < po_states.length; i++){
-                                                if (filterSubstate(po_states[i]) !== 1) {
-                                                    buttons++;
-                                                    if (buttons > 2) {
-                                                        stategrp++;
-                                                        html += "</div><div class='btn-group btn-block stategrp"+stategrp+"'>";
-                                                        buttons = 1;
-                                                    }
+                                                       var color = getButtonColor(po_states[i]);
+                                                       //TODO disabled override
+                                                       var disabled = "";
+                                                       if (po_states[i] == json_store.objects[fp_entity].state) {
+                                                           disabled = "disabled";
+                                                       }
+                                                       html += "<button class='btn col-sm-6 col-xs-6 btn-"+color+" "+disabled+"'";
+                                                       var url= '/SET;none?select_item='+fp_entity+'&select_state='+po_states[i];
+                                                       html += ' onclick="$.get(';
+                                                       html += "'"+url+"')";
+                                                       html += '">'+po_states[i]+'</button>';
+                                                   }
+                                               }
+                                               html += "</div></div>";
+                                               //console.log("html="+html)
+                                           }
+                                           return html;
+                                       }
+                                   });
+                               } else {
+                                   E.click( function () {
+                                       //var fp_entity = $(this).attr("id").split(/entity_/)[1]; //
+                                       var fp_entity = $(this).attr("id").match(/entity_(.*)_\d+$/)[1]; //strip out entity_ and ending _X ... item names can have underscores in them.
+                                       //alert("entity="+fp_entity);
+                                       create_state_modal(fp_entity);
+                                   });
+                               }
+                               E.mayTriggerLongClicks().on( 'longClick', function() {
+                                   var fp_entity = $(this).attr("id").match(/entity_(.*)_\d+$/)[1]; //strip out entity_ and ending _X ... item names can have underscores in them.
+                                   create_state_modal(fp_entity);
+                               });
+                           }
+                       }
+                    }
 
-                                                    var color = getButtonColor(po_states[i]);
-                                                    //TODO disabled override
-                                                    var disabled = "";
-                                                    if (po_states[i] == json_store.objects[fp_entity].state) {
-                                                        disabled = "disabled";
-                                                    }
-                                                    html += "<button class='btn col-sm-6 col-xs-6 btn-"+color+" "+disabled+"'";
-                                                    var url= '/SET;none?select_item='+fp_entity+'&select_state='+po_states[i];
-                                                    html += ' onclick="$.get(';
-                                                    html += "'"+url+"')";
-                                                    html += '">'+po_states[i]+'</button>';
-                                                }
-                                            }
-                                            html += "</div></div>";
-                                            //console.log("html="+html)
-                                        }
-                                        return html;
-                                }
-                            });
-                        } else {
-                            E.click( function () {
-                                //var fp_entity = $(this).attr("id").split(/entity_/)[1]; //
-                                var fp_entity = $(this).attr("id").match(/entity_(.*)_\d+$/)[1]; //strip out entity_ and ending _X ... item names can have underscores in them.
-                                //alert("entity="+fp_entity);
-                                create_state_modal(fp_entity);
-                            });
+                    if (URLHash.show_pos){
+                        perl_pos_code += perl_pos_coords + ");";
+                        if (perl_pos_coords.length===0)
+                        {
+                            fp_getOrCreateIcon(json, entity, 0, "", URLHash.show_pos);
                         }
-                        E.mayTriggerLongClicks().on( 'longClick', function() {
-                            var fp_entity = $(this).attr("id").match(/entity_(.*)_\d+$/)[1]; //strip out entity_ and ending _X ... item names can have underscores in them.
-                            create_state_modal(fp_entity);
-                        });
+                        else{
+                            var oldCode = $('#fp_pos_perl_code').text();
+                            if (oldCode.length !== 0)
+                                oldCode += "\n";
+                            perl_pos_code = oldCode  + perl_pos_code;
+                            $('#fp_pos_perl_code').text(perl_pos_code);
+                        }
                     }
                 }
-            }
             fp_reposition_entities();
+            if (requestTime === 0){
+                $('#list_content').append("<p>&nbsp;</p>");
+            }
             requestTime = json.meta.time;
             var t1 = performance.now();
             console.log("FP: long poll " +Math.round(t1 - t0) + "ms");
@@ -1421,7 +1525,35 @@ var floorplan = function(group,time) {
         }
     }
 });
-}
+};
+var fp_getOrCreateIcon = function (json, entity, i, coords, show_pos){
+    var popover = 0;
+    if ((json.data[entity].type == "FPCamera_Item") || (json_store.ia7_config.prefs.fp_state_popovers == "yes"))
+        popover = 1;
+
+    var popover_html = "";
+    if (popover)
+        popover_html = 'data-toggle="popover" data-trigger="focus" tabindex="0"';
+
+    var entityId = 'entity_'+entity+'_'+i;
+    if ($('#entity_'+entity+'_'+i).length === 0) {
+        $('#graphic').append(
+                '<span style="display: inline-block">'  +
+                '<a title="'+entityId+'"><img '+popover_html+' ' +
+                'id="'+entityId+'"' +
+                'class="entity='+entityId+' floorplan_item coords='+coords+'" '+
+                '"></img></a>'+
+                '</span>');
+    }
+    var E = $('#'+entityId);
+    E.bind("dragstart", noDragDrop);
+    var image = get_fp_image(json.data[entity]);
+    E.attr('src',"/ia7/graphics/"+image);
+    if (show_pos)
+        E.css("border","1px solid black");
+    return E;
+};
+
 var fp_display_width=0;
 var fp_display_height=0;
 
@@ -1460,6 +1592,10 @@ var fp_reposition_entities = function(){
     $(".floorplan_item").each(function(index) {
         var classstr = $(this).attr("class");
         var coords = classstr.split(/coords=/)[1];
+        $(this).width(scale + "%");
+        if (coords.length === 0){
+            return;
+        }
         var fp_location = coords.split(/x/);
         var fp_offset =  fp_get_offset_from_location(fp_location);
 
@@ -1472,7 +1608,6 @@ var fp_reposition_entities = function(){
         //     $(this).attr('src',$(this).attr('src').replace('32.png','48.png'));
         // }
 
-        $(this).width(scale + "%");
         var adjust = $(this).width()/2;
         fp_off_center = {
             "top": Math.round(fp_offset.top - adjust),
