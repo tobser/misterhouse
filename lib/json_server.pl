@@ -193,14 +193,12 @@ sub json_get {
 
         eval {
             my $prefs = file_read($prefs_file);
-            my $json = new JSON::XS;
-            $json->relaxed();
-
-            $json_data{'ia7_config'} = $json->decode($prefs);
+            $json_data{'ia7_config'} =
+              decode_json($prefs);  #HP, wrap this in eval to prevent MH crashes
         };
         if ($@) {
             print_log
-              "Json_Server.pl: WARNING: decode_json failed for ia7_config.json. Please check this file: $@";
+              "Json_Server.pl: WARNING: decode_json failed for ia7_config.json. Please check this file!";
             $json_data{'ia7_config'} =
               decode_json('{ "prefs" : { "status" : "error" } }')
               ;                     #write a blank collection
