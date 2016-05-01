@@ -1218,7 +1218,7 @@ var noDragDrop = function() {
 
 var fp_getOrCreateIcon = function (json, entity, i, coords, show_pos){
     var popover = 0;
-    if ((json.data[entity].type == "FPCamera_Item") || (json_store.ia7_config.prefs.fp_state_popovers == "yes"))
+    if ((json.data[entity].type === "FPCamera_Item") || (json_store.ia7_config.prefs.fp_state_popovers === "yes"))
         popover = 1;
 
     var popover_html = "";
@@ -1227,7 +1227,7 @@ var fp_getOrCreateIcon = function (json, entity, i, coords, show_pos){
 
     var entityId = 'entity_'+entity+'_'+i;
     if ($('#' + entityId).length === 0) {
-        var html = '<span style="display: inline-block">'  +
+        var html = '<span style="display: inline-block">'  + // this span somehow magically make resizing the icons work
                 '<a title="'+entity+'"><img '+popover_html+' ' +
                 'id="'+entityId+'"' +
                 'class="entity='+entityId+' floorplan_item coords='+coords+'" '+
@@ -1302,11 +1302,11 @@ var fp_reposition_entities = function(){
         // }
 
         var adjust = $(this).width()/2;
-        fp_off_center = {
+        var fp_off_center = {
             "top":  fp_offset.top - adjust,
             "left": fp_offset.left - adjust
         };
-        fp_set_pos($(this).attr('id'));
+        fp_set_pos($(this).attr('id'), fp_off_center);
     });
 
 	$('.icon_select img').each(function(){
@@ -1316,11 +1316,11 @@ var fp_reposition_entities = function(){
     console.log("FP: reposition and scale: " +Math.round(t1 - t0) + "ms ");
 };
 
-var fp_set_pos = function(id){
+var fp_set_pos = function(id, offset){
     var item =  $('#' + id);
-    item.closest("span").offset(fp_off_center);
-    //item.css('position','absolute');
-    item.offset(fp_off_center);
+    // do not move the span, this make the popup to narrow somehow
+    // item.closest("span").offset(offset);
+    item.offset(offset);
 };
 
 var fp_is_point_on_fp = function (p){
@@ -1374,7 +1374,7 @@ var floorplan = function(group,time) {
         return;
     }
 
-    if (updateSocket !== undefined && updateSocket.readyState != 4){
+    if (updateSocket !== undefined && updateSocket.readyState !== 4){
         // Only allow one update thread to run at once
         updateSocket.abort();
     }
@@ -1400,7 +1400,7 @@ var floorplan = function(group,time) {
                     "top": e.pageY - itemCenterOffset,
                     "left": e.pageX - itemCenterOffset
                 };
-                fp_set_pos(fp_grabbed_entity.id);
+                fp_set_pos(fp_grabbed_entity.id, newPos);
                 //console.log(fp_grabbed_entity.id +" pos: " +newPos.top + " x " + newPos.left);
                 //fp_grabbed_entity.class.replace("coords=.*", "coords="+pos);
             }
@@ -1518,7 +1518,7 @@ var floorplan = function(group,time) {
         success: function( json, statusText, jqXHR ) {
             //  console.log('FP: request succeeded: "' + statusText + '" "'+JSON.stringify(jqXHR, undefined,2)+'"');
             var requestTime = time;
-            if (jqXHR.status == 200) {
+            if (jqXHR.status === 200) {
                 var t0 = performance.now();
                 JSONStore(json);
                 for (var entity in json.data) {
@@ -1527,7 +1527,7 @@ var floorplan = function(group,time) {
                     }
                     for (var i=0 ; i < json.data[entity].fp_location.length-1; i=i+2){ //allow for multiple graphics
                         var popover = 0;
-                        if ((json.data[entity].type == "FPCamera_Item") || (json_store.ia7_config.prefs.fp_state_popovers == "yes"))
+                        if ((json.data[entity].type === "FPCamera_Item") || (json_store.ia7_config.prefs.fp_state_popovers === "yes"))
                             popover = 1;
 
                         if (URLHash.show_pos && requestTime === 0){
@@ -1543,7 +1543,7 @@ var floorplan = function(group,time) {
                         if (URLHash.show_pos === undefined)
                         {
                             // create unique popovers for Camera items
-                            if (json.data[entity].type == "FPCamera_Item") {
+                            if (json.data[entity].type === "FPCamera_Item") {
                                 var name = entity;
                                 if (json.data[entity].label !== undefined)
                                     name = json.data[entity].label;
@@ -1595,7 +1595,7 @@ var floorplan = function(group,time) {
                                                         var color = getButtonColor(po_states[i]);
                                                         //TODO disabled override
                                                         var disabled = "";
-                                                        if (po_states[i] == json_store.objects[fp_entity].state) {
+                                                        if (po_states[i] === json_store.objects[fp_entity].state) {
                                                             disabled = "disabled";
                                                         }
                                                         html += "<button class='btn col-sm-6 col-xs-6 btn-"+color+" "+disabled+"'";
@@ -1664,7 +1664,7 @@ var floorplan = function(group,time) {
                         success: function( json, statusText, jqXHR ) {
                             console.log('FP: request iconsets: "' + statusText + '" "'+JSON.stringify(jqXHR, undefined,2)+'"');
                             var requestTime = time;
-                            if (jqXHR.status == 200) {
+                            if (jqXHR.status === 200) {
                                 var iconlist = '<ul class="icon_select" style="display:none;z-index:1000;position:absolute;overflow:hidden;border:1px solid #CCC; background: #FFF; border-radius: 5px; padding: 0;">\n';
                                 var pathlist = jqXHR.responseJSON.data;
                                 for (var i = 0; i < pathlist.length; i++){
@@ -1742,7 +1742,7 @@ var floorplan = function(group,time) {
                 var t1 = performance.now();
                 console.log("FP: long poll " +Math.round(t1 - t0) + "ms");
             }
-            if (jqXHR.status == 200 || jqXHR.status == 204) {
+            if (jqXHR.status === 200 || jqXHR.status === 204) {
                 //Call update again, if page is still here
                 //KRK best way to handle this is likely to check the URL hash
                 if ($('#floorplan').length !== 0){
@@ -1759,9 +1759,9 @@ var floorplan = function(group,time) {
 
 var get_fp_image = function(item,size,orientation) {
   	var image_name;
-  	var image_color = getButtonColor(item.state)
+	var image_color = getButtonColor(item.state);
 	var baseimg_width = $(window).width();
-  	var image_size = "48"
+	var image_size = "48";
   //	if (baseimg_width < 500) image_size = "32" // iphone scaling
   	//kvar image_size = "32"
  	if (item.fp_icons !== undefined) {
@@ -1773,35 +1773,35 @@ var get_fp_image = function(item,size,orientation) {
   		return "fp_"+item.fp_icon_set+"_"+image_color+"_"+image_size+".png";
  	} 	
  	//	if item.fp_icons.return item.fp_icons[state];
-  	if(item.type == "Light_Item" || item.type == "Fan_Light" ||
-    		item.type == "Insteon_Device" || item.type == "UPB_Link" ||
-    		item.type == "Insteon::SwitchLinc" || item.type == "Insteon::SwitchLincRelay" ||    
-    		item.type == "Insteon::KeyPadLinc" ||   		    				
-    		item.type == "EIB_Item" || item.type == "EIB1_Item" ||
-    		item.type == "EIB2_Item" || item.type == "EIO_Item" ||
-    		item.type == "UIO_Item" || item.type == "X10_Item" ||    		
-    		item.type == "xPL_Plugwise" || item.type == "X10_Appliance") {
+	if(item.type === "Light_Item" || item.type === "Fan_Light" ||
+		item.type === "Insteon_Device" || item.type === "UPB_Link" ||
+		item.type === "Insteon::SwitchLinc" || item.type === "Insteon::SwitchLincRelay" ||
+		item.type === "Insteon::KeyPadLinc" ||
+		item.type === "EIB_Item" || item.type === "EIB1_Item" ||
+		item.type === "EIB2_Item" || item.type === "EIO_Item" ||
+		item.type === "UIO_Item" || item.type === "X10_Item" ||
+		item.type === "xPL_Plugwise" || item.type === "X10_Appliance") {
 
   			return "fp_light_"+image_color+"_"+image_size+".png";
   	}
   	
-  	if(item.type == "Motion_Item" || item.type == "X10_Sensor" ||
-    		item.type == "Insteon::MotionSensor" ) {
+	if(item.type === "Motion_Item" || item.type === "X10_Sensor" ||
+		item.type === "Insteon::MotionSensor" ) {
   			return "fp_motion_"+image_color+"_"+image_size+".png";
 
   	}
   	
-  	if(item.type == "Door_Item" || item.type == "Insteon::IOLinc_door") {
+	if(item.type === "Door_Item" || item.type === "Insteon::IOLinc_door") {
   			return "fp_door_"+image_color+"_"+image_size+".png";
 
   	}  	
 
-  	if(item.type == "FPCamera_Item" ) {
+	if(item.type === "FPCamera_Item" ) {
  			return "fp_camera_default_"+image_size+".png";
  		}
   	
   	return "fp_unknown_info_"+image_size+".png";
-}
+};
 
 var create_img_popover = function(entity) {
 }
