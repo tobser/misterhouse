@@ -529,9 +529,9 @@ var loadList = function() {
 
 var getButtonColor = function (state) {
 	var color = "default";
-	if (state == "on" || state == "open" || state == "disarmed" || state == "unarmed" || state == "ready" || state == "dry" || state == "up" || state == "100%" || state == "online") {
+	if (state == "on" || state == "closed" || state == "disarmed" || state == "unarmed" || state == "ready" || state == "dry" || state == "up" || state == "100%" || state == "online") {
 		 color = "success";
-	} else if (state == "motion" || state == "closed" || state == "armed" || state == "wet" || state == "fault" || state == "down" || state == "offline") {
+	} else if (state == "motion" || state == "open" || state == "armed" || state == "wet" || state == "fault" || state == "down" || state == "offline") {
 		 color = "danger";
 	} else if (state == undefined || state == "unknown" ) {
 		 color = "info";
