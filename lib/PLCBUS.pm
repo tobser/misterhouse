@@ -475,6 +475,9 @@ sub _handle_commands () {
     #_logddd("sending: ". Dumper($self->{current_cmd}));
     $self->_write_current_command();
     $self->_log_waiting_commands();
+    if($::New_Day){
+        &main::file_backup("$main::config_parms{data_dir}/logs/plcbus.log");
+    }
 }
 
 sub _queue_maintainance_commands() {
