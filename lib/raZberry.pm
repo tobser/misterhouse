@@ -26,13 +26,13 @@ raZberry_<child>(<controller>,<device id>,<options>)
 
 In items.mht:
 
-RAZBERRY_CONTROLLER		name,		ip_address, group,		$options
-RAZBERRY_DIMMER			device_id,	name,		group,		$controller, 	options
-RAZBERRY_BLIND			device_id,	name,		group,		$controller, 	options
-RAZBERRY_LOCK			device_id,	name,		group,		$controller, 	options
-RAZBERRY_THERMOSTAT		device_id,	name,		group,		$controller, 	options
-RAZBERRY_TEMP_SENSOR	device_id,	name,		group,		$controller, 	options
-RAZBERRY_BINARY_SENSOR,	device_id,	name,		group,		$controller,	options
+RAZBERRY_CONTROLLER		controller_name,	ip_address, group,		options
+RAZBERRY_DIMMER			device_id,      	name,		group,		controller_name, 	options
+RAZBERRY_BLIND			device_id,      	name,		group,		controller_name, 	options
+RAZBERRY_LOCK			device_id,      	name,		group,		controller_name, 	options
+RAZBERRY_THERMOSTAT		device_id,      	name,		group,		controller_name, 	options
+RAZBERRY_TEMP_SENSOR	device_id,      	name,		group,		controller_name, 	options
+RAZBERRY_BINARY_SENSOR,	device_id,      	name,		group,		controller_name,    options
     
 =head2 DESCRIPTION
 
