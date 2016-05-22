@@ -641,7 +641,7 @@ sub new {
 sub set {
     my ( $self, $p_state, $p_setby ) = @_;
 
-    if ( $p_setby eq 'poll' ) {
+    if (defined $p_setby && $p_setby eq 'poll' ) {
         $self->{level} = $p_state;
         my $n_state;
         if ( $p_state == 0 ) {
