@@ -1139,7 +1139,6 @@ sub level {
     return ( $self->{level} );
 }
 
-
 sub ping {
     my ($self) = @_;
 
@@ -1150,6 +1149,10 @@ sub isfailed {
     my ($self) = @_;
 
     $$self{master_object}->isfailed_dev( $$self{devid} );
+}
+
+sub update_data {
+	my ($self,$data) = @_;
 }
 
 package raZberry_openclose;
