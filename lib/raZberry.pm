@@ -33,6 +33,12 @@ RAZBERRY_LOCK			device_id,      	name,		group,		controller_name, 	options
 RAZBERRY_THERMOSTAT		device_id,      	name,		group,		controller_name, 	options
 RAZBERRY_TEMP_SENSOR	device_id,      	name,		group,		controller_name, 	options
 RAZBERRY_BINARY_SENSOR,	device_id,      	name,		group,		controller_name,    options
+
+If the Element you want to setup is not attached to the first instance of the zwave device you
+can specify the full ID of the element instead of only the main id: Instad of 
+RAZBERRY_TEMP_SENSOR	7,      	Temperature_Family_Room,		group,		controller_name, 	options
+you specify the full id
+RAZBERRY_TEMP_SENSOR	7-2-49-1,      	Temperature_Family_Room,		group,		controller_name, 	options
     
 =head2 DESCRIPTION
 
@@ -231,7 +237,10 @@ sub poll {
                 &main::print_log("[raZberry] Child object detected: Controller Level:["
                       . $item->{metrics}->{level} . "] Child Level:["
                       . $self->{child_object}->{$id}->level() . "]" ) if ( $self->{debug} > 1 );
-                $self->{child_object}->{$id}->set( $item->{metrics}->{level}, 'poll' ) if ( $self->{child_object}->{$id}->level() ne $item->{metrics}->{level} );
+                  if ( $self->{child_object}->{$id}->level()
+                          and $self->{child_object}->{$id}->level() ne $item->{metrics}->{level} ){
+                      $self->{child_object}->{$id}->set( $item->{metrics}->{level}, 'poll' );
+                  }
                 $self->{child_object}->{$id}->update_data ($self->{data}->{devices}->{$id}); #be able to push other data to objects for actions
             }
 
@@ -380,7 +389,7 @@ sub _get_JSON_data {
         $self->{updating} = 0;
         if ( !$isSuccessResponse ) {
             &main::print_log(
-                "[raZberry] Warning, failed to get data. Response code $responseCode"
+                "[raZberry] Warning, failed to get data. Response code $responseCode: $responseObj->status_line"
             );
             if ( defined $self->{child_object}->{comm} ) {
                 if ( $self->{status} eq "online" ) {
