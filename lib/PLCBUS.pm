@@ -1113,6 +1113,10 @@ sub _write_current_command {
             . "'" );
     }
     else {
+        my $resp = $self->{current_cmd}->{respond};
+        if ($resp){
+            &::respond( $resp, "OK" );
+        }
         _logd($m);
     }
 }
@@ -1229,6 +1233,8 @@ sub generate_code(@) {
     my ( $home, $unit ) = _split_homeunit($address);
 
     my $home_name = "PLCBUS_$home";
+    $grouplist = "" unless $grouplist;
+    $scene_list = "" unless $scene_list;
 
     # $grouplist .= "|$phome";
 
@@ -1784,6 +1790,7 @@ sub handle_incoming {
 
     if ($msg) {
         if ( $c->{respond} ) {
+            $self->_log("response: $msg");
             &::respond( $c->{respond}, $msg );
         }
         $self->_log($msg);
