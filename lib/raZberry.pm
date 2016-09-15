@@ -237,8 +237,8 @@ sub poll {
                 &main::print_log("[raZberry] Child object detected: Controller Level:["
                       . $item->{metrics}->{level} . "] Child Level:["
                       . $self->{child_object}->{$id}->level() . "]" ) if ( $self->{debug} > 1 );
-                  if ( $self->{child_object}->{$id}->level()
-                          and $self->{child_object}->{$id}->level() ne $item->{metrics}->{level} ){
+                  if ( !$self->{child_object}->{$id}->level()
+                          or $self->{child_object}->{$id}->level() ne $item->{metrics}->{level} ){
                       $self->{child_object}->{$id}->set( $item->{metrics}->{level}, 'poll' );
                   }
                 $self->{child_object}->{$id}->update_data ($self->{data}->{devices}->{$id}); #be able to push other data to objects for actions
