@@ -441,6 +441,8 @@ sub json_get {
         	my $index = 0;
         	my $start = time;
         	$start = $args{start}[0] if (defined $args{start}[0]);
+        	my $graph = 0;
+        	$graph = $args{graph}[0] if (defined $args{graph}[0]);
         	my $days = 0;
         	$days = $args{days}[0] if (defined $args{days}[0]);        	
             foreach my $name ( @{ $args{items} } ) {
@@ -449,41 +451,45 @@ sub json_get {
  				next unless $o->get_logger_status();
  				my $label = $o->set_label();
  				$label = $name unless (defined $label);
- 	 			print ("db history name=$name label=$label\n");			
  				my $logger_data = $o->get_logger_data($start,$days);
- 				print ("db data=$logger_data\n");
  				#alert if any anomalous states are detected
              	my @lines = split /\n/, $logger_data;
             	foreach my $line (@lines) {	
             		my $value;
             		my ($time1,$time2,$obj,$state,$setby,$target) = split ",",$line;
-            		if (defined $statemaps{$state}) {
-            			$value = $statemaps{$state};
-            		} else {
-            			if ($state =~ /(\d+)\%/) {
-            				$value = $_;
-            			} else { 
-            				&main::print_log("json_server.pl: WARNING. object history state $state not found in mapping");
-            				$value = $unknown_value++;
-            			}
-            		}
-                    $states{$value} = $state;
- 					push @{$dataset[$index]->{data}}, [ int($time2), int($value) ];
+            		if ($graph) {
+            			if (defined $statemaps{$state}) {
+            				$value = $statemaps{$state};
+            			} else {
+            				if ($state =~ /(\d+)\%/) {
+            					$value = $_;
+            				} else { 
+            					&main::print_log("json_server.pl: WARNING. object history state $state not found in mapping");
+            					$value = $unknown_value++;
+            				}
+            			}          			
+                    	$states{$value} = $state;
+ 						push @{$dataset[$index]->{data}}, [ int($time2), int($value) ];
+ 					} else {
+ 						push @dataset, [int($time2), $state, $setby];
+					} 						
  				}
-                push @{$dataset[$index]->{label}}, $label;
+                push @{$dataset[$index]->{label}}, $label if ($graph);
 				$index++;
  			}
- 		#flot expects to see an array
-		my @yaxticks = ();
-		for my $j (sort keys %states) {
+ 		if ($graph) {	
+ 			#flot expects to see an array
+			my @yaxticks = ();
+			for my $j (sort keys %states) {
     			push @yaxticks, [ $j, $states{$j} ];
-    	}
-  		$data{'options'}->{'yaxis'}->{'ticks'}  = \@yaxticks; #\%states;
-  		$data{'options'}->{'legend'}->{'show'} = "true";
-  		$data{'options'}->{'xaxis'}->{'mode'} = "time";
-  		$data{'options'}->{'points'}->{'show'} = "true";
-  		$data{'options'}->{'xaxis'}->{'timezone'} = "browser";
-  		$data{'options'}->{'grid'}->{'hoverable'} = "true";
+    		}
+  			$data{'options'}->{'yaxis'}->{'ticks'}  = \@yaxticks; #\%states;
+  			$data{'options'}->{'legend'}->{'show'} = "true";
+  			$data{'options'}->{'xaxis'}->{'mode'} = "time";
+  			$data{'options'}->{'points'}->{'show'} = "true";
+  			$data{'options'}->{'xaxis'}->{'timezone'} = "browser";
+  			$data{'options'}->{'grid'}->{'hoverable'} = "true";
+  		}
         $data{'data'}    = \@dataset;
         $json_data{'history'} = \%data;
  		}
