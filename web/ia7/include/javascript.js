@@ -1833,6 +1833,7 @@ var fp_display_height=0; // updated by fp_resize_floorplan_image
 var fp_scale = 100; // updated by fp_reposition_entities
 var fp_grabbed_entity = null; // store item for drag & drop
 var fp_icon_select_item_id = null; // store item id on right click for icon set selection
+var fp_icon_image_size = 48;
 
 var noDragDrop = function() {
     return false;
@@ -1884,7 +1885,8 @@ var fp_resize_floorplan_image = function(){
 
 var fp_reposition_entities = function(){
     var t0 = performance.now();
-    var offset = $("#fp_graphic").offset();
+    var fp_graphic_offset = $("#fp_graphic").offset();
+    console.log("fp_graphic_offset: "+ JSON.stringify(fp_graphic_offset));
     var width = fp_display_width;
     var hight = fp_display_height;
     var onePercentWidthInPx = width/100;
@@ -1892,8 +1894,8 @@ var fp_reposition_entities = function(){
     var fp_get_offset_from_location = function(item) {
         var y = item[0];
         var x = item[1];
-        var newy = offset.top +  y * onePercentHeightInPx;
-        var newx = offset.left +  x * onePercentWidthInPx;
+        var newy = fp_graphic_offset.top +  y * onePercentHeightInPx;
+        var newx = fp_graphic_offset.left +  x * onePercentWidthInPx;
         return {
             "top": newy,
             "left": newx
@@ -1918,15 +1920,15 @@ var fp_reposition_entities = function(){
     } else {
     	nwidth = 790;
     }
-
-    fp_scale = Math.round( width/nwidth * 100);
+    var fp_scale =  width/nwidth;
+    var fp_scale_percent = Math.round( fp_scale * 100);
     
-	console.log("width="+width+" nwidth="+nwidth+" scale="+fp_scale);
+	console.log("width="+width+" nwidth="+nwidth+" scale="+fp_scale_percent);
     // update the location of all the objects...
     $(".floorplan_item").each(function(index) {
         var classstr = $(this).attr("class");
         var coords = classstr.split(/coords=/)[1];
-        $(this).width(fp_scale + "%");
+        $(this).width(fp_scale_percent + "%");
 
         if (coords.length === 0){
             return;
@@ -1942,13 +1944,13 @@ var fp_reposition_entities = function(){
         // } else {
         //     $(this).attr('src',$(this).attr('src').replace('32.png','48.png'));
         // }
-
-        var adjust = $(this).width()/2;
+        var element_id = $(this).attr('id');
+        var adjust = fp_icon_image_size*fp_scale/2;
         var fp_off_center = {
             "top":  fp_offset.top - adjust,
             "left": fp_offset.left - adjust
         };
-        fp_set_pos($(this).attr('id'), fp_off_center);
+        fp_set_pos(element_id, fp_off_center);
     });
 
 	$('.icon_select img').each(function(){
@@ -2062,14 +2064,14 @@ var floorplan = function(group,time) {
             if (fp_grabbed_entity === null)
                 return;
 
-            set_set_coordinates_from_offset(fp_grabbed_entity.id);
+            set_coordinates_from_offset(fp_grabbed_entity.id);
             fp_reposition_entities();
             fp_grabbed_entity = null;
         });
 
     }
 
-    var set_set_coordinates_from_offset = function (id)
+    var set_coordinates_from_offset = function (id)
     {
         var E = $('#'+id);
         var offsetE = E.offset();
@@ -2403,14 +2405,13 @@ var get_fp_image = function(item,size,orientation) {
   	var image_name;
 	var image_color = getButtonColor(item.state);
 	var baseimg_width = $(window).width();
-	var image_size = "48";
-  //	if (baseimg_width < 500) image_size = "32" // iphone scaling
-  	//kvar image_size = "32"
+  //	if (baseimg_width < 500) fp_icon_image_size = "32" // iphone scaling
+	//kvar fp_icon_image_size = "32"
  	if (item.fp_icons !== undefined) {
  		if (item.fp_icons[item.state] !== undefined) return item.fp_icons[item.state];
  	}
  	if (item.fp_icon_set !== undefined) {
-  		return "fp_"+item.fp_icon_set+"_"+image_color+"_"+image_size+".png";
+		return "fp_"+item.fp_icon_set+"_"+image_color+"_"+fp_icon_image_size+".png";
  	} 	
  	//	if item.fp_icons.return item.fp_icons[state];
 	if(item.type === "Light_Item" || item.type === "Fan_Light" ||
@@ -2422,25 +2423,25 @@ var get_fp_image = function(item,size,orientation) {
 		item.type === "UIO_Item" || item.type === "X10_Item" ||
 		item.type === "xPL_Plugwise" || item.type === "X10_Appliance") {
 
-  			return "fp_light_"+image_color+"_"+image_size+".png";
+			return "fp_light_"+image_color+"_"+fp_icon_image_size+".png";
   	}
   	
 	if(item.type === "Motion_Item" || item.type === "X10_Sensor" ||
 		item.type === "Insteon::MotionSensor" ) {
-  			return "fp_motion_"+image_color+"_"+image_size+".png";
+			return "fp_motion_"+image_color+"_"+fp_icon_image_size+".png";
 
   	}
   	
 	if(item.type === "Door_Item" || item.type === "Insteon::IOLinc_door") {
-  			return "fp_door_"+image_color+"_"+image_size+".png";
+			return "fp_door_"+image_color+"_"+fp_icon_image_size+".png";
 
   	}  	
 
 	if(item.type === "FPCamera_Item" ) {
- 			return "fp_camera_default_"+image_size+".png";
+			return "fp_camera_default_"+fp_icon_image_size+".png";
  		}
   	
-  	return "fp_unknown_info_"+image_size+".png";
+	return "fp_unknown_info_"+fp_icon_image_size+".png";
 };
 
 var create_img_popover = function(entity) {
