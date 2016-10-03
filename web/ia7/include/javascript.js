@@ -1961,7 +1961,7 @@ var fp_reposition_entities = function(){
     });
 
 	$('.icon_select img').each(function(){
-        $(this).width(fp_scale + "%");
+        $(this).width(fp_scale_percent + "%");
 	});
     var t1 = performance.now();
     console.log("FP: reposition and scale: " +Math.round(t1 - t0) + "ms ");
