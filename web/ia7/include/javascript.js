@@ -232,8 +232,9 @@ function changePage (){
 			display_table(path_arg[1]);
 		}	
 		else if(path.indexOf('floorplan') === 0){
-			var path_arg = path.split('?');
-			floorplan(path_arg[1]);
+            console.log("FP: load floorplan");
+            var path_arg = path.split('?');
+            floorplan(path_arg[1]);
 		}
 		else if(path.indexOf('rrd') === 0){
 			var path_arg = path.split('?');
@@ -2397,6 +2398,15 @@ var floorplan = function(group,time) {
                     if (developer ===  false)
                         floorplan(group,requestTime);
                 }
+            }
+            if (time === 0){
+                // hack to fix initial positions of the items
+                var wait = 1000;
+                console.log("FP: calling  fp in  " +wait+ "ms");
+                setTimeout(function(){
+                    console.log("FP: calling fp after " +wait+ "ms");
+                    fp_reposition_entities();
+                }, wait);
             }
         }
     });
