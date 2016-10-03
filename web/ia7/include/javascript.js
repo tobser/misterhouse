@@ -1691,8 +1691,10 @@ var object_history = function(items,start,days,time) {
 				
 				$('.update_history').click(function() {
 					console.log ("start="+$('.hist_start').val()+" end="+$('.hist_end').val());
-					var new_start = new Date($('.hist_start').val()).getTime();
-					var new_end = new Date($('.hist_end').val()).getTime();
+//					var new_start = new Date($('.hist_start').val()).getTime();
+//					var new_end = new Date($('.hist_end').val()).getTime();
+					var new_start = new Date($('.hist_start').val().split('-')).getTime();
+					var new_end = new Date($('.hist_end').val().split('-')).getTime();					
 					var end_days = (new_start - new_end) / (24 * 60 * 60 * 1000)
 					new_start = new_start / 1000;
 					object_history(items,new_start,end_days);
@@ -1723,15 +1725,18 @@ var object_history = function(items,start,days,time) {
         					for (var i = 0; i < json.data.data.length; i++) {
             					if (json.data.data[i].label == key) {
                 					data.push(json.data.data[i]);
-                				return true;
+                					return true;
            		 				}
        		 				}
     					});
     					// take away the border so that it looks better and span the graph from start to end.
     					json.data.options.grid.borderWidth = 0;
 
-    					json.data.options.xaxis.min = new Date($('.hist_end').val()).getTime();
-                		json.data.options.xaxis.max = new Date($('.hist_start').val()).getTime() + (24 * 60 * 60 * 1000);
+//    					json.data.options.xaxis.min = new Date($('.hist_end').val()).getTime();
+//                		json.data.options.xaxis.max = new Date($('.hist_start').val()).getTime() + (24 * 60 * 60 * 1000);
+						json.data.options.xaxis.min = new Date($('.hist_end').val().split('-')).getTime();
+ 						json.data.options.xaxis.max = new Date($('.hist_start').val().split('-')).getTime() + (24 * 60 * 60 * 1000);
+                		
 //console.log("data="+JSON.stringify(data));
 //console.log("xmin="+json.data.options.xaxis.min+" xmax="+json.data.options.xaxis.max);
     					$.plot($("#hist-graph"), data, json.data.options);
@@ -1855,7 +1860,7 @@ var fp_getOrCreateIcon = function (json, entity, i, coords){
                 '<a title="'+entity+'"><img '+popover_html+' ' +
                 'id="'+entityId+'"' +
                 'class="entity='+entityId+' floorplan_item coords='+coords+'" '+
-                '"></img></a>'+
+                '></img></a>'+
                 '</span>';
         if (coords !== ""){
             $('#graphic').append(html);
@@ -1936,6 +1941,7 @@ var fp_reposition_entities = function(){
         }
         var fp_location = coords.split(/x/);
         var fp_offset =  fp_get_offset_from_location(fp_location);
+		console.log("coords="+coords);       
 
         // this seems to make the repositioning slow
         // ~ 300+ms on my nexus7 firefox-beta vs <100ms with this code commented out
@@ -1965,7 +1971,23 @@ var fp_set_pos = function(id, offset){
     var item =  $('#' + id);
     // do not move the span, this make the popup to narrow somehow
     // item.closest("span").offset(offset);
+    var left11 = item.css("left");
+    var left12 = item[0].style.left;
+    var top11 = item.css("top");
+    var top12 = item[0].style.top;    
+    var before = item.offset();
+    var init = false
+    if (item.css("left") == "auto") {
+    	console.log("auto found, fixing left property");
+    	offset.left = 0 - fp_icon_image_size/2;
+    }
     item.offset(offset);
+    var after = item.offset();
+    var left21 = item.css("left");
+    var left22 = item[0].style.left;        
+    console.log("offset.top="+offset.top+" offset.left="+offset.left+" before.top="+before.top+" before.left="+before.left+" after.top="+after.top+" after.left="+after.left);
+	console.log("top11="+top11+" top12="+top12);
+	console.log("left11="+left11+" left12="+left12+" left21="+left21+" left22="+left22);    
 };
 
 var fp_is_point_on_fp = function (p){
@@ -2541,7 +2563,18 @@ var create_state_modal = function(entity) {
 		$('#control').find('.modal-footer').find('.sched_submit').remove();	
 		// Unique Schedule Data here
 		if (json_store.objects[entity].schedule !== undefined) {
-		
+
+			var modify_jqcon_dow = function(cronstr,offset) {
+				var cron = cronstr.split(/\s+/);
+				console.log("dow="+cron[cron.length-1]);
+				cron[cron.length-1] = cron[cron.length-1].replace(/\d/gi, function adjust(x) { 
+					console.log("x="+x+" offset="+offset);
+					return parseInt(x) + parseInt(offset); 
+				});;			
+				console.log("dow="+cron[cron.length-1]);
+				return cron.join(" ");
+				}	
+
 			var add_schedule = function(index,cron,label,state_sets) {
 				if (cron === null) return;
 				if (label == undefined) label = index;
@@ -2620,7 +2653,7 @@ var create_state_modal = function(entity) {
 			console.log("schedule.length="+json_store.objects[entity].schedule.length);
 			for (var i = 1; i < json_store.objects[entity].schedule.length; i++){
 				var sched_index = json_store.objects[entity].schedule[i][0];
-				var sched_cron = json_store.objects[entity].schedule[i][1];
+				var sched_cron = modify_jqcon_dow(json_store.objects[entity].schedule[i][1],1);
 				var sched_label = json_store.objects[entity].schedule[i][2];
 				console.log("si="+sched_index+",sc="+sched_cron+",sl="+sched_label+",ss="+sched_states);	
 				add_schedule(sched_index,sched_cron,sched_label,sched_states);	
@@ -2644,7 +2677,10 @@ var create_state_modal = function(entity) {
 				if ($(this).hasClass("disabled")) return;
 				var string = "";
 				$('.mhsched').each(function(index,value) {
-					string += $( this ).attr("id") + ',"' + $( this ).text() + '",' + $( this ).attr("label") + ',';
+					console.log("string="+string);
+//					string += $( this ).attr("id") + ',"' + $( this ).text() + '",' + $( this ).attr("label") + ',';
+					string += $( this ).attr("id") + ',"' + modify_jqcon_dow($(this).text(),"-1") + '",' + $( this ).attr("label") + ',';
+					console.log("string="+string);					
 				});
 				string = string.replace(/,\s*$/, ""); //remove the last comma
 				var url="/SUB?ia7_update_schedule"+encodeURI("("+$(this).parents('.control-dialog').attr("entity")+","+string+")");
