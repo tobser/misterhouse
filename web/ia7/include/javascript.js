@@ -34,7 +34,7 @@ var buf; //audio buffer
 // load all modules not needed to display until after the collection screen.
 var modules = {};
 modules.zoneminder = {};
-modules['zoneminder'].loaded = 0
+modules['zoneminder'].loaded = 0;
 modules['zoneminder'].script = ["zm.js"];
 
 modules.object = {};
@@ -56,11 +56,11 @@ modules['edit'].loaded = 0;
 modules['edit'].script = ["bootstrap3-editable.1.5.0.min.js"];
 modules['edit'].css = ["bootstrap3-editable.1.5.0.css"];
 
-modules.rrd = {}
+modules.rrd = {};
 modules['rrd'].loaded = 0;
 modules['rrd'].script = ["jquery.flot.min.js"];
 modules['rrd'].callback = function (){loadModule("rrd2")};
-modules.rrd2 = {}
+modules.rrd2 = {};
 modules['rrd2'].loaded = 0;
 modules['rrd2'].script = ["jquery.flot.time.min.js","jquery.flot.resize.min.js","jquery.flot.selection.min.js"];
 
