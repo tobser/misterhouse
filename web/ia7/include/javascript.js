@@ -1350,8 +1350,6 @@ var updateStaticPage = function(link,time) {
 		success: function( json, textStatus, jqXHR) {
 			var requestTime = time;
 			if (jqXHR.status == 200) {
-				ajax_req_success("static_page");						
-				JSONStore(json);
 				requestTime = json_store.meta.time;
 				$('button[entity]').each(function(index) {
 					if ($(this).attr('entity') != '' && json.data[$(this).attr('entity')] != undefined ) { //need an entity item for this to work.
