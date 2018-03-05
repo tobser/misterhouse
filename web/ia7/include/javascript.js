@@ -1,5 +1,5 @@
 
-var ia7_ver = "v1.6.700";
+var ia7_ver = "v2.0.210";
 var entity_store = {}; //global storage of entities
 var json_store = {};
 var updateSocket;
@@ -24,6 +24,48 @@ var zm_init = undefined;
 
 var ctx; //audio context
 var buf; //audio buffer
+
+var modules = {};
+modules.zoneminder = {};
+modules['zoneminder'].loaded = 0
+modules['zoneminder'].script = ["zm.js"];
+
+modules.object = {};
+modules['object'].loaded = 0;
+modules['object'].script = ["jqCron.js"];
+modules['object'].css = ["jqCron.css","bootstrap-datepicker3.standalone.min.css"];
+modules['object'].callback = function (){loadModule("object2")};
+modules.object2 = {};
+modules['object2'].loaded = 0;
+modules['object2'].script = ["jqCron.en.js","bootstrap-datepicker.min.js"];
+
+modules.init = {};
+modules['init'].loaded = 0;
+//modules['init'].script = ["jquery-ui-1.12.1.min.js","jquery.ui.touch-punch.0.2.3.min.js","bootstrap3-editable.1.5.0.min.js","jquery.alerts.js"];
+modules['init'].script = ["jquery.ui.touch-punch.0.2.3.min.js","bootstrap3-editable.1.5.0.min.js","jquery.alerts.js"];
+//modules['init'].css = ["jquery-ui.smoothness.1.12.1.min.css","bootstrap3-editable.1.5.0.css","jquery.alerts.css"];
+modules['init'].css = ["bootstrap3-editable.1.5.0.css","jquery.alerts.css"];
+
+
+modules.rrd = {}
+modules['rrd'].loaded = 0;
+modules['rrd'].script = ["jquery.flot.min.js"];
+modules['rrd'].callback = function (){loadModule("rrd2")};
+modules.rrd2 = {}
+modules['rrd2'].loaded = 0;
+modules['rrd2'].script = ["jquery.flot.time.min.js","jquery.flot.resize.min.js","jquery.flot.selection.min.js"];
+
+
+modules.tables = {};
+modules['tables'].loaded = 0;
+modules['tables'].css = ["tables.css"];
+
+modules.developer = {};
+modules['developer'].loaded = 0;
+modules['developer'].script = ["fontawesome-iconpicker.min.js"];
+modules['developer'].css = ["fontawesome-iconpicker.min.css"];
+// line 1465
+//line 153?
 
 //Takes the current location and parses the achor element into a hash
 function URLToHash() {
@@ -230,6 +272,8 @@ function changePage (){
 		});
 	} 
 	else {
+	    // remove the loader if present
+	    $('#loader').hide();
 		// Check for authorize
 		authDetails();
 		// Clear Options Entity by Default
@@ -241,6 +285,7 @@ function changePage (){
 		//Trim leading and trailing slashes from path
 		var path = URLHash.path.replace(/^\/|\/$/g, "");
 		if (path.indexOf('objects') === 0){
+		    loadModule('object');
 			loadList();
 		}
 		else if ((path.indexOf('vars') === 0) || (path.indexOf('vars_global') === 0) || (path.indexOf('vars_save') === 0)){
@@ -248,6 +293,7 @@ function changePage (){
 		}
 		else if (path.indexOf('prefs') === 0){
 			var pref_name = path.replace(/\prefs\/?/,'');
+            loadModule('developer');
 			loadPrefs(pref_name);
 		}		
 		else if(URLHash._request == 'page'){
@@ -273,14 +319,17 @@ function changePage (){
 			print_log("speak");
 		}
 		else if(path.indexOf('display_table') === 0){
+            loadModule('tables');
 			var path_arg = path.split('?');
 			display_table(path_arg[1]);
 		}	
 		else if(path.indexOf('floorplan') === 0){
 			var path_arg = path.split('?');
+            loadModule('object');
 			floorplan(path_arg[1]);
 		}
 		else if(path.indexOf('rrd') === 0){
+            loadModule('rrd');
 			var path_arg = path.split('?');
 			graph_rrd(path_arg[1],path_arg[2]);
 		}
@@ -288,7 +337,8 @@ function changePage (){
 			var path_arg = path.split('?');
 			object_history(path_arg[1],undefined,path_arg[2]);
 		}					
-		else if(URLHash._request == 'trigger'){
+		else if(URLHash._request == 'trigger' ||path.indexOf('trigger') === 0){
+			loadModule('init');
 			trigger();
 		}
 		else { //default response is to load a collection
@@ -895,18 +945,18 @@ var loadList = function() {
 					}
 				});
 			});
-            $(".btn-state-cmd").click( function () {
-                var entity = $(this).attr("entity");
-                if (json_store.ia7_config.objects !== undefined && json_store.ia7_config.objects[entity] !== undefined) {
-                    if (json_store.ia7_config.objects[entity].direct_control !== undefined && json_store.ia7_config.objects[entity].direct_control == "yes") {
+			$(".btn-state-cmd").click( function () {
+				var entity = $(this).attr("entity");
+				if (json_store.ia7_config.objects !== undefined && json_store.ia7_config.objects[entity] !== undefined) {
+                	if (json_store.ia7_config.objects[entity].direct_control !== undefined && json_store.ia7_config.objects[entity].direct_control == "yes") {
                         direct_control(entity);
-                    } else {
-                        create_state_modal(entity);
-                    }
-                } else {
-                    create_state_modal(entity);
-                }
-            });
+                	} else {
+                		create_state_modal(entity);
+                	}
+				} else {				
+					create_state_modal(entity);
+				}
+			});
 			$(".btn-state-cmd").mayTriggerLongClicks().on( 'longClick', function() {		
 				var entity = $(this).attr("entity");
 				create_state_modal(entity);
@@ -955,7 +1005,7 @@ var getButtonColor = function (state) {
 	} else if (state == "cooling" || state == "cool") {
 		 color = "info";
 	}
-	if (json_store.ia7_config.state_colors !== undefined
+	if (json_store.ia7_config !== undefined && json_store.ia7_config.state_colors !== undefined
             && json_store.ia7_config.state_colors[state] !== undefined) {
 		color = "purple";
 		if (json_store.ia7_config.state_colors[state] == "green") {
@@ -1199,61 +1249,61 @@ var updateStaticPage = function(link,time) {
 	var path_str = "/objects"  // override, for now, would be good to add voice_cmds
 	var arg_str = "fields=state%2Cstates%2Cstate_log%2Cschedule%2Clogger_status%2Clabel&long_poll=true&items="+items+"&time="+time;
 
-    updateSocket = $.ajax({
-        type: "GET",
-        url: "/LONG_POLL?json('GET','"+path_str+"','"+arg_str+"')",
-        dataType: "json",
-        success: function( json, textStatus, jqXHR) {
-            var requestTime = time;
-            if (jqXHR.status == 200) {
-                JSONStore(json);
-                requestTime = json_store.meta.time;
-                $('button[entity]').each(function(index) {
-                    if ($(this).attr('entity') != '' && json.data[$(this).attr('entity')] != undefined ) { //need an entity item for this to work.
-                        entity = $(this).attr('entity');
-                        var color = getButtonColor(json.data[entity].state);
-                        $('button[entity="'+entity+'"]').find('.pull-right').text(json.data[entity].state);
-                        $('button[entity="'+entity+'"]').removeClass("btn-default");
-                        $('button[entity="'+entity+'"]').removeClass("btn-success");
-                        $('button[entity="'+entity+'"]').removeClass("btn-warning");
-                        $('button[entity="'+entity+'"]').removeClass("btn-danger");
-                        $('button[entity="'+entity+'"]').removeClass("btn-info");
-                        $('button[entity="'+entity+'"]').addClass("btn-"+color);
-                        if (json_store.ia7_config.objects[entity] !== undefined && 
-                            json_store.ia7_config.objects[entity].direct_control !== undefined && 
-                            json_store.ia7_config.objects[entity].direct_control == "yes") $('button[entity="'+entity+'"]').addClass("btn-direct");
-
-                        //don't run this if stategrp0 exists	
-                        if (states_loaded == 0) {
-                            $('button[entity="'+entity+'"]').click( function () {
-                                var entity = $(this).attr("entity");
-                                if (json_store.ia7_config.objects !== undefined && json_store.ia7_config.objects[entity] !== undefined) {
-                                    if (json_store.ia7_config.objects[entity].direct_control !== undefined && json_store.ia7_config.objects[entity].direct_control == "yes") {
+	updateSocket = $.ajax({
+		type: "GET",
+		url: "/LONG_POLL?json('GET','"+path_str+"','"+arg_str+"')",
+		dataType: "json",
+		success: function( json, textStatus, jqXHR) {
+			var requestTime = time;
+			if (jqXHR.status == 200) {
+				JSONStore(json);
+				requestTime = json_store.meta.time;
+				$('button[entity]').each(function(index) {
+					if ($(this).attr('entity') != '' && json.data[$(this).attr('entity')] != undefined ) { //need an entity item for this to work.
+						entity = $(this).attr('entity');
+						var color = getButtonColor(json.data[entity].state);
+						$('button[entity="'+entity+'"]').find('.pull-right').text(json.data[entity].state);
+						$('button[entity="'+entity+'"]').removeClass("btn-default");
+						$('button[entity="'+entity+'"]').removeClass("btn-success");
+						$('button[entity="'+entity+'"]').removeClass("btn-warning");
+						$('button[entity="'+entity+'"]').removeClass("btn-danger");
+						$('button[entity="'+entity+'"]').removeClass("btn-info");
+						$('button[entity="'+entity+'"]').addClass("btn-"+color);
+						if (json_store.ia7_config.objects[entity] !== undefined && 
+						    json_store.ia7_config.objects[entity].direct_control !== undefined && 
+						    json_store.ia7_config.objects[entity].direct_control == "yes") $('button[entity="'+entity+'"]').addClass("btn-direct");
+						
+						//don't run this if stategrp0 exists	
+						if (states_loaded == 0) {
+			                $('button[entity="'+entity+'"]').click( function () {
+								var entity = $(this).attr("entity");
+								if (json_store.ia7_config.objects !== undefined && json_store.ia7_config.objects[entity] !== undefined) {
+                					if (json_store.ia7_config.objects[entity].direct_control !== undefined && json_store.ia7_config.objects[entity].direct_control == "yes") {
                                         direct_control(entity);
-                                    } else {
-                                        create_state_modal(entity);
-                                    }
-                                } else {
-                                    create_state_modal(entity);
-                                }
-                        });
-                        }
-                    }
-                    generateTooltips();
-
-                });
-            }
-            if (jqXHR.status == 200 || jqXHR.status == 204) {
-                //Call update again, if page is still here
-                //KRK best way to handle this is likely to check the URL hash
-                if (URLHash.link == link || link == undefined){
-                    //While we don't anticipate handling a list of groups, this
-                    //may error out if a list was used
-                    updateStaticPage(URLHash.link,requestTime);
-                }
-            }
-        }
-    });
+                					} else {
+                					create_state_modal(entity);
+                					}
+								} else {				
+									create_state_modal(entity);
+								}
+							});
+						}																
+					}
+					generateTooltips();
+			
+				});
+			}
+			if (jqXHR.status == 200 || jqXHR.status == 204) {
+				//Call update again, if page is still here
+				//KRK best way to handle this is likely to check the URL hash
+				if (URLHash.link == link || link == undefined){
+					//While we don't anticipate handling a list of groups, this 
+					//may error out if a list was used
+					updateStaticPage(URLHash.link,requestTime);
+				}
+			}
+		} 
+	});  
 }
 
 function authDetails() {
@@ -1291,13 +1341,13 @@ var direct_control = function (entity){
             return false;
         }
     }
-    else
+   else
     {
         if (dc_states.length !== 2)
         {
-            something_went_wrong("direct_control", "Bad 'direct_control_states' configuration for '"+entity+"' in ia7_config.json. "+
+          something_went_wrong("direct_control", "Bad 'direct_control_states' configuration for '"+entity+"' in ia7_config.json. "+
                 "'direct_control_states' needs exactly 2 entries. E.g:"+
-                "<code>" + 
+               "<code>" + 
                 "    \""+entity+"\" : {\n" +
                 "        \"direct_control_states\": [\n" +
                 "            \"on\",\n" +
@@ -1317,6 +1367,8 @@ var direct_control = function (entity){
     $.get( url);
     return true;
 };
+
+
 	
 //Prints all of the navigation items for Ia7
 var loadCollection = function(collection_keys) {
@@ -1436,8 +1488,15 @@ var loadCollection = function(collection_keys) {
 		column++;
 	}
 	
+	//Main Screen is displayed, so load all secondary scripts
+    loadModule('init');
+    loadModule('object');
+    loadModule('tables');
+    loadModule('rrd');
+
 	generateTooltips();	
 
+    
     //turn on long clicks on all buttons if in developer mode
 //TODO error checking on fields
 	$('.btn').mayTriggerLongClicks().on( 'longClick', function() {		
@@ -1468,8 +1527,8 @@ var loadCollection = function(collection_keys) {
                 create_state_modal(entity);
             }
         });
-        
-        $(".btn-state-cmd").mayTriggerLongClicks().on( 'longClick', function() {		
+
+        $(".btn-state-cmd").mayTriggerLongClicks().on( 'longClick', function() {		        
             var entity = $(this).attr("entity");
             create_state_modal(entity);
         });						
@@ -1491,6 +1550,7 @@ var loadCollection = function(collection_keys) {
         console.log("items="+items);
 		updateItem(items);
 	}	
+    loadModule('developer');
 	
 };
 
@@ -3704,12 +3764,11 @@ var trigger = function() {
 	dataType: "json",
 	success: function( json ) {
 		var keys = [];
-		for (var key in json.triggers) {
+		for (var key in json.data) {
 			keys.push(key);
 		}
 		var row = 0;
-		for (var i = (keys.length-1); i >= 0; i--){
-			var name = keys[i];
+		for (var i = (keys.length-1); i >= -1; i--){
 			if (row === 0){
 				$('#list_content').html('');
 			}
@@ -3717,41 +3776,55 @@ var trigger = function() {
 			if (row % 2 == 1){
 				dark_row = 'dark-row';
 			}
-			$('#list_content').append("<div id='row_a_" + row + "' class='row top-buffer'>");
-			$('#row_a_'+row).append("<div id='content_a_" + row + "' class='col-sm-12 col-sm-offset-0 col-md-10 col-md-offset-1 col-lg-8 col-lg-offset-2'>");
-			$('#content_a_'+row).append("<div class='col-sm-5 trigger "+dark_row+"'><b>Name: </b><a id='name_"+row+"'>" + name + "</a></div>");
-			$('#content_a_'+row).append("<div class='col-sm-4 trigger "+dark_row+"'><b>Type: </b><a id='type_"+row+"'>" + json.triggers[keys[i]].type + "</a></div>");
-			$('#content_a_'+row).append("<div class='col-sm-3 trigger "+dark_row+"'><b>Last Run:</b> " + json.triggers[keys[i]].triggered + "</div>");
-			$('#list_content').append("<div id='row_b_" + row + "' class='row'>");
-			$('#row_b_'+row).append("<div id='content_b_" + row + "' class='col-sm-12 col-sm-offset-0 col-md-10 col-md-offset-1 col-lg-8 col-lg-offset-2'>");
-			$('#content_b_'+row).append("<div class='col-sm-5 trigger "+dark_row+"'><b>Trigger:</b> <a id='trigger_"+row+"'>" + json.triggers[keys[i]].trigger + "</a></div>");
-			$('#content_b_'+row).append("<div class='col-sm-7 trigger "+dark_row+"'><b>Code:</b> <a id='code_"+row+"'>" + json.triggers[keys[i]].code + "</a></div>");
+			var name;
+			var type;
+			var last_run;
+			var trigger;
+			var code;
+			if (i < 0) {
+			    name = "new trigger";
+			    console.log("add new trigger "+i+" "+row);
+			    break;
+			} else {
+			    name = keys[i];
+			}
+            $('#list_content').append("<div id='row_a_" + row + "' class='row top-buffer'>");
+            $('#row_a_'+row).append("<div id='content_a_" + row + "' class='col-sm-12 col-sm-offset-0 col-md-10 col-md-offset-1 col-lg-8 col-lg-offset-2'>");
+            $('#content_a_'+row).append("<div class='col-sm-1 trigger "+dark_row+"'><button>D</button><button>C</button></div>");
+            $('#content_a_'+row).append("<div class='col-sm-5 trigger "+dark_row+"'><b>Name: </b><a id='name_"+row+"' data-name='"+name+"'>" + name + "</a></div>");
+            $('#content_a_'+row).append("<div class='col-sm-3 trigger "+dark_row+"'><b>Type: </b><a id='type_"+row+"' data-name='"+name+"'>" + json.data[keys[i]].type + "</a></div>");
+            $('#content_a_'+row).append("<div class='col-sm-3 trigger "+dark_row+"'><b>Last Run:</b> " + json.data[keys[i]].triggered + "</div>");
+            $('#list_content').append("<div id='row_b_" + row + "' class='row'>");
+            $('#row_b_'+row).append("<div id='content_b_" + row + "' class='col-sm-12 col-sm-offset-0 col-md-10 col-md-offset-1 col-lg-8 col-lg-offset-2'>");
+            $('#content_b_'+row).append("<div class='col-sm-1 trigger "+dark_row+"'><button>RUN</button></div>");			
+            $('#content_b_'+row).append("<div class='col-sm-5 trigger "+dark_row+"'><b>Trigger:</b> <a id='trigger_"+row+"' data-name='"+name+"'>" + json.data[keys[i]].trigger + "</a></div>");
+            $('#content_b_'+row).append("<div class='col-sm-6 trigger "+dark_row+"'><b>Code:</b> <a id='code_"+row+"' data-name='"+name+"'>" + json.data[keys[i]].code + "</a></div>");
 			$.fn.editable.defaults.mode = 'inline';
-			$('#name_'+row).editable({
-				type: 'text',
-				pk: 1,
-				url: '/post',
-				title: 'Enter username'
-			});
-			$('#type_'+row).editable({
-				type: 'select',
-				pk: 1,
-				url: '/post',
-				title: 'Select Type',
-				source: [{value: 1, text: "Disabled"}, {value: 2, text: "NoExpire"}]
-			});
-			$('#trigger_'+row).editable({
-				type: 'text',
-				pk: 1,
-				url: '/post',
-				title: 'Enter trigger'
-			});
-			$('#code_'+row).editable({
-				type: 'text',
-				pk: 1,
-				url: '/post',
-				title: 'Enter code'
-			});
+            $('#name_'+row).editable({
+                type: 'text',
+                pk: 'name',
+                url: '/json/triggers',
+                title: 'Enter Trigger Name'
+            });
+            $('#type_'+row).editable({
+                type: 'select',
+                pk: 'type',
+                url: '/json/triggers',
+                title: 'Select Type',
+                source: [{value: "Disabled", text: "Disabled"}, {value: "NoExpire", text: "NoExpire"}, {value: "OneShot", text: "OneShot"}, {value: "Expired", text: "Expired"}]
+            });
+            $('#trigger_'+row).editable({
+                type: 'text',
+                pk: 'trigger',
+                url: '/json/triggers',
+                title: 'Enter trigger'
+            });
+            $('#code_'+row).editable({
+                type: 'text',
+                pk: 'code',
+                url: '/json/triggers',
+                title: 'Enter code'
+            });
 			row++;
 		}
 	}
@@ -4086,30 +4159,55 @@ function getScript(source, callback) {
     };
 
     script.src = source;
+    script.type = "text/javascript";
+
     prior.parentNode.insertBefore(script, prior);
 }
+
+var loadModule = function(name,callback) {
+
+    if (modules[name].loaded == 1) {
+        console.log("Module "+name+" already loaded");
+        return 0;
+    }
+    if (name == "zoneminder" || name == "all") {
+        var config = json_store.ia7_config.zoneminder;
+        if (config === undefined) {
+            console.log("no zoneminder config...");
+            if (name == "zoneminder") return 0;
+        }
+    }
+    //loop through all modules if all
+    if (modules[name].script !== undefined ) {
+        for (var i = 0, len = modules[name].script.length; i < len; i++) {
+            console.log("loading script "+name+" "+modules[name].script[i]);
+            modules[name].loaded = 1;
+            if (modules[name].callback !== undefined && (i + 1) == (len)) callback = modules[name].callback;
+            getScript("/ia7/include/"+modules[name].script[i], callback);
+        }
+    }
+    if (modules[name].css !== undefined ) {
+        for (var i = 0, len = modules[name].css.length; i < len; i++) {
+            modules[name].loaded = 1;
+            console.log("loading css "+name+" "+modules[name].css[i]);
+            var fileref = document.createElement("link")
+            fileref.setAttribute("rel", "stylesheet")
+            fileref.setAttribute("type", "text/css")
+            fileref.setAttribute("href", "/ia7/include/"+modules[name].css[i])
+            document.getElementsByTagName("head")[0].appendChild(fileref); 
+        }
+    }    
+    return 1;
+
+
+};
 
 // checks Wether a zoneminder configuration exists,
 // loads the zoneminder zm.js and connects the configured zmeventservers
 // more info on zoneminder integration is found in ./zm.js.md
 var zoneminder = function()
 {
-    var config = json_store.ia7_config.zoneminder;
-    if (config === undefined)
-    {
-        console.log("no zoneminder config...");
-        return;
-    }
-    if (zm_init !== undefined)
-    {
-        console.log("zoneminder connection exists config...");
-        return;
-    }
-
-    console.log("loading Zoneminder zm.js.");
-	zm_init = true;
-
-    getScript("/ia7/include/zm.js", function(){
+    loadModule('zoneminder', function(){
         zm.init();
         for (i = 0; i < config.length; ++i) {
             zm.connect_server(config[i]);
