@@ -1385,9 +1385,13 @@ var updateStaticPage = function(link,time) {
                                 create_state_modal(entity);
                             });								
 						}																
-					}
-					generateTooltips();
-			
+                    }
+                    $(".btn-state-cmd").mayTriggerLongClicks().on( 'longClick', function() {
+                        var entity = $(this).attr("entity");
+                        create_state_modal(entity);
+                    });
+                    generateTooltips();
+
 				});
 			}
 			if (jqXHR.status == 200 || jqXHR.status == 204) {
@@ -4543,6 +4547,7 @@ var zoneminder = function()
     }
     loadModule('zoneminder', function(){
         zm.init();
+        var config = json_store.ia7_config.zoneminder;
         for (i = 0; i < config.length; ++i) {
             zm.connect_server(config[i]);
         }
