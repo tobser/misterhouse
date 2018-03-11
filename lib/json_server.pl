@@ -176,7 +176,7 @@ sub json_put {
         $body = decode_json($body);    #HP, wrap this in eval to prevent MH crashes
     };
     
-    if ($@ and !$empty_json and ( $path[0] ne 'triggers' )) { #bootstrap-editable can't send JSON data, but create the special case so that IA7 Post has a single MH entrypoint
+    if ($@ and !$empty_json) {
         &main::print_log( "Json_Server.pl: WARNING: decode_json failed for json POST!" );
         &main::print_log( "Json_Server.pl: WARNING: Data is $body" );
 
@@ -255,13 +255,7 @@ sub json_put {
 
     } elsif ( $path[0] eq 'triggers' ) {
 
-        #check to see if JSON data or encoded data 
-        my $url_data = $body;
-        $url_data =~ s/\+/ /g; 
-        $url_data =~ s/%([A-Fa-f\d]{2})/chr hex $1/eg;
-        my ($source,$value,$category) = $url_data =~ /name=(.+)&value=(.+)&pk=(.+)/;
-
-        if ($empty_json or !$source or !$value or !$category) {
+        if (($empty_json or (!defined $body->{name}) or (!defined $body->{value}) or (!defined $body->{pk})) and (defined $body->{pk} and lc $body->{pk} ne 'add')) {
                 $response_code = "HTTP/1.1 500 Internal Server Error\r\n";
                 $response_text->{status} = "error";
                 if ($empty_json) {
@@ -269,43 +263,71 @@ sub json_put {
                 } else {
                     $response_text->{text} = "Bad submitted data";                
                 }
-                &main::print_log( "Json_Server.pl: ERROR." . $response_text->{text});
+                &main::print_log( "Json_Server.pl: ERROR: Trigger Post:" . $response_text->{text});
 
         } else {
 
-             &main::print_log( "Json_Server.pl: Updating Triggers, $url_data");
-             &main::print_log( "Json_Server.pl: Updating Triggers, [$source] [$value] [$category]");
-        my $err = 0;
-        if ($category eq 'code') {
-            $err = trigger_code_flag($value);
-            &main::print_log( "Json_Server.pl: code = $err");
-        }
-        my ( $trigger, $code, $type, $triggered, $trigger_error, $code_error ) = trigger_get($source);
-
-        $code = $value if ($category eq 'code');
-        $type = $value if ($category eq 'type');
-        my $name = $source;
-        $name = $value if ($category eq 'name');
-        $trigger = $value if ($category eq 'trigger');
-             
+        print Dumper $body;
         
+        my $err = 0;
+        my $status;
+        if ($body->{pk} eq 'code') {
+            $err = trigger_code_flag($body->{value});
+            if ($err) {
+                $status = "Error: Blacklist command found:$err";
+                &main::print_log( "Json_Server.pl: Trigger. Blacklist command ($err) found in $body->{name}");
+            } else {
+                $status = &trigger_set_code($body->{name}, $body->{value});
+            }
+           
+        } elsif ($body->{pk} eq 'name') {
+           $status = &trigger_rename($body->{name}, $body->{value});
+        
+        } elsif ($body->{pk} eq 'type') {
+           $status = &trigger_set_type($body->{name}, $body->{value});
+
+        } elsif ($body->{pk} eq 'trigger') {
+           $status = &trigger_set_trigger($body->{name}, $body->{value});
+
+        } elsif ($body->{pk} eq 'add') {
+            &main::print_log( "Json_Server.pl: adding new trigger $body->{name} ");
+            my $trigger = ( $body->{trigger1} ) ? "$body->{trigger1} $body->{trigger2}" : $body->{trigger2};
+            my $code;
+            if ( $body->{code1} ) {
+                 unless ( $body->{code1} eq 'set' ) {
+                     $body->{code2} =~ s/\'/\\'/g;
+                     $body->{code2} = "'$body->{code2}'";
+                 }
+                 $code = "$body->{code1} $body->{code2}";
+             }
+             else {
+                 $code = $body->{code2};
+             }
+             &main::print_log("trigger_set( $trigger, $code, $body->{type}, $body->{name} )");
+
+             $status = &trigger_set( $trigger, $code, $body->{type}, $body->{name} );
+        }
+                     
 #             if (lc $Authorized ne "admin") {
 #                 $response_code = "HTTP/1.1 401 Unauthorized\r\n";
 #                 $response_text->{status} = "error";
 #                 $response_text->{text} = "Administative Access required";
 #                 &main::print_log( "Json_Server.pl: ERROR." . $response_text->{text});
 
- #            } else {
-            # parse the code for maliciousness
-            #then just set the trigger hash to new value
-            #if trigger doesn't exist then add n("ew one
-            &trigger_set( $trigger, $code, $type, $name );
-            $response_code = "HTTP/1.1 200 OK\r\n";
-            $response_text->{status} = "success";
-            $response_text->{text} = ""; 
-            #&_triggers_save
-#             }
+            if ($status =~ m/OK/) {
+                $response_code = "HTTP/1.1 200 OK\r\n";
+                $response_text->{status} = "success";
+                my ($txt) = $status =~ /INFO: (.*)/i; 
+                $response_text->{text} = "";
+                $response_text->{text} = $txt if ($txt);             
+                &_triggers_save
 
+            } else {
+                $response_code = "HTTP/1.1 500 Internal Server Error\r\n";
+                $response_text->{status} = "error";
+                my ($txt) = $status =~ /ERROR: (.*)/i; 
+                $response_text->{text} = $txt;
+            }
         
         }
 

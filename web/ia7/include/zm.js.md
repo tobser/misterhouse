@@ -12,7 +12,7 @@ Zoneminder servers.
     [
     	{
     		"host": "zm.server",
-            "zmdir": "/zm/"
+            "cgipath": "/zm/",
     		"port": "9000",
     		"protocol": "ws",
     		"user": "yourusername",
@@ -29,7 +29,7 @@ Zoneminder servers.
 Hostname or IP of the server where zmeventserver instance is reachable.
 Falls back to 'localhost' if omitted.
 
-`zmdir:`
+`cgipath:`
 directory of your zoneminder installation on the webserver. If your zoneminder webinterface is reachable with the ulr "http://zm-server/somedir/"
 set this value to "somedir"
 Can be omitted no subdirectory is used.

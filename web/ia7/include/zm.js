@@ -33,14 +33,14 @@ var zm = {
 		var conf = config;
 		var timeout = (conf.timeout === undefined ? 5500 : conf.timeout);
 		var zm_url = (conf.protocol === undefined ? 'wss': conf.protocol);
-        var zm_dir = (conf.zmdir === undefined ? '' : conf.zmdir);
-        if (zm_dir !== '')
+        var cgipath = (conf.cgipath === undefined ? '' : conf.cgipath);
+        if (cgipath !== '') // make sure cgipath is of form "somepath/"
         {
-            zm_dir =  zm_dir.replace(/\/$/, '');
+            cgipath =  cgipath.replace(/\/$/, '');
 
-            if ( zm_dir.startsWith("/") === false)
+            if ( cgipath.startsWith("/") === false)
             {
-                zm_dir = "/" + zm_dir;
+                cgipath = "/" + cgipath;
             }
         }
 		var notify = (conf.browsernotifications  === undefined ? false: conf.browsernotifications);
@@ -102,7 +102,7 @@ var zm = {
 				{
 					var url = '';
 					url += 'http://' +conf.host;
-                    url +=  zm_dir;
+                    url +=  cgipath;
                     url += '/cgi-bin/nph-zms?mode=jpeg';
 					url += '&scale='+ (conf.scale === undefined ? '100': conf.scale);
 					url += '&maxfps=5&buffer=1000';
@@ -114,7 +114,7 @@ var zm = {
 					html +=      '<h4>'+ monitor_event.Name + '</h4>';
 					html +=      '<img border=1 id="img-'+id + '"';
 					html +=           'src="' + url +'" ';
-					html +=      '/>';
+					html +=      'width="90%" />';
 					html +=   '</center>';
 					html += '</div>';
 					log("created new div: " + html);

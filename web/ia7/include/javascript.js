@@ -1,5 +1,6 @@
 
-var ia7_ver = "v2.0.210";
+var ia7_ver = "v2.0.350";
+var coll_ver = "";
 var entity_store = {}; //global storage of entities
 var json_store = {};
 var updateSocket;
@@ -16,15 +17,20 @@ var developer = false;
 var show_tooltips = true;
 var rrd_refresh_loop;
 var stats_loop;
-var stat_refresh = 60;
 var fp_popover_close = true ;
 var dev_changes = 0;
 var config_modal_loop;
 var zm_init = undefined;
+var req_errors = {};
+
+var stat_refresh = 60;
+var error_retry = 10; //seconds to retry if an error was found in ajax request
 
 var ctx; //audio context
 var buf; //audio buffer
 
+//'Dynamic' modules. To enable the main collection screen to display as quick as possible
+// load all modules not needed to display until after the collection screen.
 var modules = {};
 modules.zoneminder = {};
 modules['zoneminder'].loaded = 0
@@ -41,11 +47,13 @@ modules['object2'].script = ["jqCron.en.js","bootstrap-datepicker.min.js"];
 
 modules.init = {};
 modules['init'].loaded = 0;
-//modules['init'].script = ["jquery-ui-1.12.1.min.js","jquery.ui.touch-punch.0.2.3.min.js","bootstrap3-editable.1.5.0.min.js","jquery.alerts.js"];
-modules['init'].script = ["jquery.ui.touch-punch.0.2.3.min.js","bootstrap3-editable.1.5.0.min.js","jquery.alerts.js"];
-//modules['init'].css = ["jquery-ui.smoothness.1.12.1.min.css","bootstrap3-editable.1.5.0.css","jquery.alerts.css"];
-modules['init'].css = ["bootstrap3-editable.1.5.0.css","jquery.alerts.css"];
+modules['init'].script = ["jquery.alerts.js","jquery.ui.touch-punch.0.2.3.min.js","ia7_prefs.json"];
+modules['init'].css = ["jquery.alerts.css"];
 
+modules.edit = {};
+modules['edit'].loaded = 0;
+modules['edit'].script = ["bootstrap3-editable.1.5.0.min.js"];
+modules['edit'].css = ["bootstrap3-editable.1.5.0.css"];
 
 modules.rrd = {}
 modules['rrd'].loaded = 0;
@@ -55,7 +63,6 @@ modules.rrd2 = {}
 modules['rrd2'].loaded = 0;
 modules['rrd2'].script = ["jquery.flot.time.min.js","jquery.flot.resize.min.js","jquery.flot.selection.min.js"];
 
-
 modules.tables = {};
 modules['tables'].loaded = 0;
 modules['tables'].css = ["tables.css"];
@@ -64,8 +71,7 @@ modules.developer = {};
 modules['developer'].loaded = 0;
 modules['developer'].script = ["fontawesome-iconpicker.min.js"];
 modules['developer'].css = ["fontawesome-iconpicker.min.css"];
-// line 1465
-//line 153?
+
 
 //Takes the current location and parses the achor element into a hash
 function URLToHash() {
@@ -267,6 +273,7 @@ function changePage (){
 			dataType: "json",
 			success: function( json ) {
 				JSONStore(json);
+				if (json.data.meta !== undefined && json.data.meta.version !== undefined) coll_ver = json.data.meta.version;				
 				changePage();
 			}
 		});
@@ -284,9 +291,10 @@ function changePage (){
 				
 		//Trim leading and trailing slashes from path
 		var path = URLHash.path.replace(/^\/|\/$/g, "");
-		if (path.indexOf('objects') === 0){
-		    loadModule('object');
-			loadList();
+		if (path.indexOf('objects') === 0){		
+            loadModule('object');
+            loadModule('rrd'); //for some reason flot.resize CSS is leveraged in the schedule CSS
+            loadList();		
 		}
 		else if ((path.indexOf('vars') === 0) || (path.indexOf('vars_global') === 0) || (path.indexOf('vars_save') === 0)){
 			loadVars();
@@ -303,9 +311,7 @@ function changePage (){
 				args = args.replace(/\=undefined/img,''); //HP sometimes arguments are just items and not key=value...
 				link += "?"+args;
 			}
-
 			$.get(link, function( data ) {
-				
 				$('#list_content').html("<div id='buffer_page' class='row top-buffer'>");
 				$('#buffer_page').append("<div id='row_page' class='col-sm-12 col-sm-offset-0 col-md-10 col-md-offset-1 col-lg-8 col-lg-offset-2 mh-page-link'>");
 				parseLinkData(link,data); //remove css & fix up Mr.House setup stuff
@@ -329,17 +335,27 @@ function changePage (){
 			floorplan(path_arg[1]);
 		}
 		else if(path.indexOf('rrd') === 0){
-            loadModule('rrd');
 			var path_arg = path.split('?');
-			graph_rrd(path_arg[1],path_arg[2]);
+			//a bit of a kludge, ensure that rrd2 is loaded before loading graph_rrd
+			if  (modules['rrd2'].loaded == 0) {
+			    modules['rrd2'].callback = function (){graph_rrd(path_arg[1],path_arg[2]);};			
+                loadModule('rrd');
+            } else {
+			    graph_rrd(path_arg[1],path_arg[2]);
+			}
 		}
 		else if(path.indexOf('history') === 0){
 			var path_arg = path.split('?');
 			object_history(path_arg[1],undefined,path_arg[2]);
 		}					
-		else if(URLHash._request == 'trigger' ||path.indexOf('trigger') === 0){
-			loadModule('init');
-			trigger();
+//		else if(URLHash._request == 'trigger' ||path.indexOf('trigger') === 0){
+		else if(path.indexOf('trigger') === 0){
+		    if (modules['edit'].loaded == 0) {
+		        modules['edit'].callback = function (){trigger();};
+			    loadModule('edit');
+			} else {
+			    trigger();
+			}
 		}
 		else { //default response is to load a collection
 			loadCollection(URLHash._collection_key);
@@ -475,12 +491,9 @@ function loadPrefs (config_name){ //show ia7 prefs, args ia7_prefs, ia7_rrd_pref
      }); 
                  
      function update_pref_array () {
-//        console.log("update pref array");
         $('.config-edit').each( function () {
             var item = $(this).attr('id');
             var value = $(this).val();
-//            console.log("id="+$(this).attr('id'));
-//            console.log("val="+$(this).val());
             json_store.ia7_config.prefs[item] = value;
         });
         changePage();        
@@ -500,7 +513,6 @@ function loadPrefs (config_name){ //show ia7 prefs, args ia7_prefs, ia7_rrd_pref
           //after apply and cancel change the cancel button text to close
            $.ajax({
                url: "/json/ia7_config",
-//what data is returned?                  dataType: 'json',
                type: 'post',
                contentType: 'application/json',
                data: JSON.stringify(json_store.ia7_config),
@@ -576,15 +588,9 @@ function parseLinkData (link,data) {
 		data = data.replace(/<a href=\"\/bin\/iniedit.pl\">Back<\/a>/img,'<a onclick=\"changePage()\">Back<\/a>');
 	
 		//replace the back button with a reload
-	}	
-	if (link == "/bin/triggers.pl") { //fix links in the triggers modules
-		var coll_key = window.location.href.substr(window.location.href.indexOf('_collection_key'))
-		data = data.replace(/href=\/bin\/triggers.pl/img, 'onclick="changePage()"');
-		data = data.replace(/\(<a name=.*?>back to top<\/a>\)/img, '');
-		data = data.replace(/Trigger Index:/img,'');
-		data = data.replace(/<a href='#.+?'>.*?<\/a>/img,'');
-		data = data.replace(/input name='resp' value="\/bin\/triggers.pl"/img, 'input name=\'resp\' value=\"/ia7/#_request=page&link=/bin/triggers.pl&'+coll_key+'\"');
-	}				
+	}
+	//removed triggers link parsing code	
+				
 	if (link == "/ia5/news/main.shtml") { //fix links in the email module 1
 		var coll_key = window.location.href.substr(window.location.href.indexOf('_collection_key'))
 		data = data.replace(/<a href='\/email\/latest.html'>Latest emails<\/a>/img,'');
@@ -613,6 +619,7 @@ function parseLinkData (link,data) {
 		});							
 	}
 	data = data.replace(/replace_current_ia7_version/img,ia7_ver); //this should really be a jquery call			
+	data = data.replace(/replace_current_collection_version/img,coll_ver); //this should really be a jquery call			
 	data = data.replace(/href="\/bin\/SET_PASSWORD"/img,'onclick=\'authorize_modal("0")\''); //Replace old password function
 	data = data.replace(/href="\/SET_PASSWORD"/img,'onclick=\'authorize_modal("0")\''); //Replace old password function 
 //TODO clean up this regex?
@@ -1151,7 +1158,12 @@ var updateList = function(path) {
 						// This is not an entity, skip it
 						continue;
 					}
-					var color = getButtonColor(json.data[entity].state);
+					var color;
+					if (json.data[entity].state === undefined) {
+					    color = "default";
+					} else {
+					    color = getButtonColor(json.data[entity].state);
+					}
 					$('button[entity="'+entity+'"]').find('.pull-right').text(
 						json.data[entity].state);
 					$('button[entity="'+entity+'"]').removeClass("btn-default");
@@ -1287,6 +1299,10 @@ var updateStaticPage = function(link,time) {
 									create_state_modal(entity);
 								}
 							});
+                            $('button[entity="'+entity+'"]').mayTriggerLongClicks().on( 'longClick', function() {		        
+                                var entity = $(this).attr("entity");
+                                create_state_modal(entity);
+                            });								
 						}																
                     }
                     $(".btn-state-cmd").mayTriggerLongClicks().on( 'longClick', function() {		        
@@ -1810,20 +1826,23 @@ var get_wi_icon = function (conditions,rain,snow,night) {
 
 
 var get_notifications = function(time) {
-	if (time === undefined) time = new Date().getTime();
 	if (updateSocketN !== undefined && updateSocketN.readyState != 4){
 		// Only allow one update thread to run at once
 		console.log ("Notify aborted "+updateSocketN.readyState);
 		updateSocketN.abort();
 	}
+	if (time === undefined) time = new Date().getTime(); //this triggers on failure.
 	var arg_str = "long_poll=true&time="+time;	
 	var path_str = "/notifications";
+	var requestTime;
+	console.log("in get_notifications");
 	updateSocketN = $.ajax({
 		type: "GET",
 		url: "/LONG_POLL?json('GET','"+path_str+"','"+arg_str+"')",		
 		dataType: "json",
 		success: function( json, statusText, jqXHR ) {
-			var requestTime = time;	
+		    ajax_req_success("notifications");
+			requestTime = time;	
 			if (jqXHR.status == 200) {
 				if (json.data !== undefined) {
 					for (var i = 0; i < json.data.length; i++){
@@ -1874,9 +1893,51 @@ var get_notifications = function(time) {
 			if (jqXHR.status == 200 || jqXHR.status == 204) {
 					get_notifications(requestTime);
 				}
-		}
+		},
+		complete: function (xhr, status, error) {
+		    console.log("in complete "+status+":"+error);
+		},
+        error: function( xhr, status, error ){
+            var message = "Unknown ajax request error";
+            if (xhr == undefined || xhr.responseText == undefined || xhr.responseText == "") {
+                message = "Lost communication with server";
+            } else {
+                var data = JSON.parse(xhr.responseText);
+                message = "Communication problem with server";
+                if (data !== undefined && data.text !== undefined) message = data.text;
+            }
+            console.log("err status="+status);
+            console.log("err error="+error);
+            console.log("err msg="+message);
+            console.log("err not="+req_errors.notifications);
+            
+            if (req_errors.notifications == undefined || req_errors.notifications === 0) {
+                something_went_wrong("System",message)
+                 $(".alert-err").delay(5000).fadeOut("slow", function () { $(this).remove(); });
+                 $("#mh_title").css("color", "red"); //have function for this
+                 req_errors.notifications = 1;
+            }
+            setTimeout(function(){ get_notifications(time)},error_retry * 1000);
+      } 
 	});
 };
+
+var ajax_req_error = function(xhr, status, error, module, callback) {
+
+}
+
+var ajax_req_success = function(module) {
+    //when connection is restored, ensure the title is black if all connections are reestablished.
+    req_errors[module] = 0;
+    var errors = 0;
+    for(var i in req_errors) {
+        errors += req_errors[i];
+        console.log("success reconnect "+i+" "+req_errors[i]+" "+errors);
+    }
+    console.log("In success reconnect for "+module+ ":"+errors);
+    
+	if (errors === 0) $("#mh_title").css("color", "black");
+}
 
 var mobile_device = function() {
 	//placeholder to turn on webaudio in the future
@@ -2002,7 +2063,11 @@ var graph_rrd = function(start,group,time) {
 	var new_data = 1;
 	var data_timeout = 0;
 	var refresh = 60; //refresh data every 60 seconds by default
-
+	
+	if (!$('#rrd-graph').is(':visible')) {
+        $('#loader').show();
+    } 
+    
 	if (json_store.ia7_config.prefs.rrd_refresh !== undefined) refresh = json_store.ia7_config.prefs.rrd_refresh;
 
 	if (typeof time === 'undefined'){
@@ -2119,6 +2184,7 @@ var graph_rrd = function(start,group,time) {
            		 			}
        		 			}
     				});
+    				$('#loader').hide();
     				$.plot($("#rrd-graph"), data, json.data.options);
     				$('.legend').hide();	
 				}
@@ -2410,12 +2476,9 @@ var object_history = function(items,start,days,time) {
 				requestTime = json.meta.time;
 
 			}
+			//No live update is needed.
 			if (jqXHR.status == 200 || jqXHR.status == 204) {
-				//Call update again, if page is still here
-				//KRK best way to handle this is likely to check the URL hash
-//TODO live updates
-
-			}		
+		    }		
 		}
 	});
 };
@@ -3437,8 +3500,8 @@ var create_state_modal = function(entity) {
 			
 			
 			});			
-			//hide the schedule controls if in simple mode
-			if 	(display_mode == "simple") {
+			//hide the schedule controls if in simple mode, or if only one state
+			if 	(display_mode == "simple" || modal_states.length == 1) {
 				$('.sched_submit').hide();
 				$('.schedrm').hide();
 				$('.schedadd').hide();
@@ -3772,7 +3835,7 @@ var trigger = function() {
 			keys.push(key);
 		}
 		var row = 0;
-		for (var i = (keys.length-1); i >= -1; i--){
+		for (var i = (keys.length); i >= 0; i--){
 			if (row === 0){
 				$('#list_content').html('');
 			}
@@ -3785,49 +3848,183 @@ var trigger = function() {
 			var last_run;
 			var trigger;
 			var code;
-			if (i < 0) {
+			if (i === keys.length) {
 			    name = "new trigger";
+			    var instructions = '<div class="panel-group whatsnew-panel"><div class="panel panel-default"><div class="panel-heading"><h5 class="panel-title"><a data-toggle="collapse" href="#collapse_inst">Instructions</a></h5></div>'
+                instructions += '<div id="collapse_inst" class="panel-collapse collapse"><div class="panel-body"><ul class="fa-ul">'    
+                instructions += '<li><i class="fa-li fa fa-chevron-right"></i>Support for adding, and editing triggers'
+                instructions += '<li><i class="fa-li fa fa-chevron-right"></i>Controls only visible in expert mode'
+                instructions += '</ul></div></div></div></div>'
+
 			    console.log("add new trigger "+i+" "+row);
-			    break;
-			} else {
-			    name = keys[i];
+			    $('#list_content').append("<div id='row_a_A' class='row top-buffer'>");
+                $('#row_a_A').append("<div id='content_a_A' class='col-sm-12 col-sm-offset-0 col-md-10 col-md-offset-1 col-lg-8 col-lg-offset-2'>");
+                $('#content_a_A').append("<div class='col-sm-3 trigger-input'><button class='btn btn-default btn-sm trigger-btn trigger-btn-add' id='"+name+"'>Add New Trigger</button></div>");
+                //$('#content_a_A').append("<div class='col-sm-9 trigger-input'>"+instructions+"</div>");
+                $('#list_content').append("<div id='row_a_N' class='row' style='display: none;'>");              
+                $('#row_a_N').append("<div id='content_a_N' class='col-sm-12 col-sm-offset-0 col-md-10 col-md-offset-1 col-lg-8 col-lg-offset-2'>");
+                $('#content_a_N').append("<div class='col-sm-8 trigger-input dark-row'><input id='name' type='text' class='form-control' placeholder='Trigger Name'></div>");
+                $('#content_a_N').append("<div class='col-sm-2 trigger-input dark-row'><select id='type' class='form-control' aria-label='type'><option>Disabled</option><option selected>OneShot</option><option>NoExpire</option></select></div>");
+                $('#content_a_N').append("<div class='col-sm-2 trigger-input dark-row'><button class='btn btn-default trigger-btn-submit col-sm-12'>Add Trigger</button></div>");
+//                $('#content_a_N').append("<div class='col-sm-1 trigger-input dark-row'><button class='btn btn-default trigger-btn-cancel col-sm-12'>CANCEL</button></div>");			
+
+                $('#list_content').append("<div id='row_b_N' class='row' style='display: none;'>");
+                $('#row_b_N').append("<div id='content_b_N' class='col-sm-12 col-sm-offset-0 col-md-10 col-md-offset-1 col-lg-8 col-lg-offset-2'>");
+                $('#content_b_N').append("<div class='col-sm-2 trigger-input dark-row'><select id='trigger1' class='form-control'><option selected></option><option>time_now</option><option>time_cron</option><option>time_random</option><option>new_second</option><option>new_minute</option><option>new_hour</option><option>$New_Hour</option><option>$New_Day</option><option>$New_Week</option><option>$New_Month</option><option>$New_Year</option></select></div>");
+                $('#content_b_N').append("<div class='col-sm-4 trigger-input dark-row'><input id='trigger2' type='text' class='form-control' placeholder='Trigger'></div>");
+                $('#content_b_N').append("<div class='col-sm-2 trigger-input dark-row'><select id='code1' class='form-control'><option selected></option><option>speak</option><option>play</option><option>display</option><option>print_log</option><option>set</option><option>run</option><option>run_voice_cmd</option><option>net_im_send</option><option>net_mail_send</option><option>get</option></select></div>");
+                $('#content_b_N').append("<div class='col-sm-4 trigger-input dark-row'><input id='code2' type='text' class='form-control' placeholder='Trigger Code'></div>");                    
+                i--;
+                                
 			}
-            $('#list_content').append("<div id='row_a_" + row + "' class='row top-buffer'>");
+			name = keys[i];
+            $('#list_content').append("<div id='row_a_" + row + "' class='row'>");
             $('#row_a_'+row).append("<div id='content_a_" + row + "' class='col-sm-12 col-sm-offset-0 col-md-10 col-md-offset-1 col-lg-8 col-lg-offset-2'>");
-            $('#content_a_'+row).append("<div class='col-sm-1 trigger "+dark_row+"'><button>D</button><button>C</button></div>");
+            $('#content_a_'+row).append("<div class='col-sm-1 trigger btn-group "+dark_row+"'><button class='btn btn-default col-xs-6 btn-xs trigger-btn trigger-btn-del' id='"+name+"'><i class='fa fa-trash'></i></button><button class='btn btn-default col-xs-6 btn-xs trigger-btn trigger-btn-copy' id='"+name+"'><i class='fa fa-clone'></i></button></div>");
             $('#content_a_'+row).append("<div class='col-sm-5 trigger "+dark_row+"'><b>Name: </b><a id='name_"+row+"' data-name='"+name+"'>" + name + "</a></div>");
-            $('#content_a_'+row).append("<div class='col-sm-3 trigger "+dark_row+"'><b>Type: </b><a id='type_"+row+"' data-name='"+name+"'>" + json.data[keys[i]].type + "</a></div>");
-            $('#content_a_'+row).append("<div class='col-sm-3 trigger "+dark_row+"'><b>Last Run:</b> " + json.data[keys[i]].triggered + "</div>");
+            $('#content_a_'+row).append("<div class='col-sm-2 trigger "+dark_row+"'><b>Type: </b><a id='type_"+row+"' data-name='"+name+"' data-value='"+json.data[keys[i]].type+"'>" + json.data[keys[i]].type + "</a></div>");
+            $('#content_a_'+row).append("<div class='col-sm-4 trigger "+dark_row+"'><b>Last Run:</b> " + json.data[keys[i]].triggered + "</div>");
             $('#list_content').append("<div id='row_b_" + row + "' class='row'>");
             $('#row_b_'+row).append("<div id='content_b_" + row + "' class='col-sm-12 col-sm-offset-0 col-md-10 col-md-offset-1 col-lg-8 col-lg-offset-2'>");
-            $('#content_b_'+row).append("<div class='col-sm-1 trigger "+dark_row+"'><button>RUN</button></div>");			
+            $('#content_b_'+row).append("<div class='col-sm-1 trigger "+dark_row+"'><button class='btn btn-default btn-xs trigger-btn col-sm-12 trigger-btn-run' id='"+name+"'>RUN</button></div>");			
             $('#content_b_'+row).append("<div class='col-sm-5 trigger "+dark_row+"'><b>Trigger:</b> <a id='trigger_"+row+"' data-name='"+name+"'>" + json.data[keys[i]].trigger + "</a></div>");
             $('#content_b_'+row).append("<div class='col-sm-6 trigger "+dark_row+"'><b>Code:</b> <a id='code_"+row+"' data-name='"+name+"'>" + json.data[keys[i]].code + "</a></div>");
+//if modules[edit] isn't loaded, then reload to be safe
 			$.fn.editable.defaults.mode = 'inline';
+			$.fn.editable.defaults.ajaxOptions = {contentType: 'application/json'};
+			$.fn.editable.defaults.params = function(params) {return JSON.stringify(params);};
+			$.fn.editable.defaults.url = '/json/triggers';			
+
+    //enable / disable
+//   $('#enable').click(function() {
+//       $('#user .editable').editable('toggleDisabled');
+//   });   
+
             $('#name_'+row).editable({
                 type: 'text',
                 pk: 'name',
-                url: '/json/triggers',
+//                inputclass: 'trigger-name',
                 title: 'Enter Trigger Name'
             });
             $('#type_'+row).editable({
                 type: 'select',
+                showbuttons: false,
                 pk: 'type',
-                url: '/json/triggers',
                 title: 'Select Type',
+                display: function(value, sourceData) {
+                    var colors = {"Disabled": "gray", "NoExpire": "green", "OneShot": "blue", "Expired": "red"},
+                    elem = $.grep(sourceData, function(o){return o.value == value;});
+                 
+                    if(elem.length) {    
+                        $(this).text(elem[0].text).css("color", colors[value]); 
+                    } else {
+                        $(this).empty(); 
+                    }
+                },  
                 source: [{value: "Disabled", text: "Disabled"}, {value: "NoExpire", text: "NoExpire"}, {value: "OneShot", text: "OneShot"}, {value: "Expired", text: "Expired"}]
             });
             $('#trigger_'+row).editable({
                 type: 'text',
                 pk: 'trigger',
-                url: '/json/triggers',
                 title: 'Enter trigger'
             });
             $('#code_'+row).editable({
                 type: 'text',
                 pk: 'code',
-                url: '/json/triggers',
                 title: 'Enter code'
+            });
+            $('.trigger-btn').off('click').on('click', function(){
+				name = $(this).attr("id");
+				if ($(this).hasClass("trigger-btn-del")) {
+				    $.get("/SUB;/bin/triggers.pl?trigger_delete("+encodeURI(name)+")");
+                    changePage();
+                } else if ($(this).hasClass("trigger-btn-copy")) {
+				    $.get("/SUB;/bin/triggers.pl?trigger_copy("+encodeURI(name)+")");                    
+                    changePage();
+                } else if ($(this).hasClass("trigger-btn-run")) {
+				    $.get("/SUB;/bin/triggers.pl?trigger_run("+encodeURI(name)+")"); 
+				    changePage();                                   
+                } else if ($(this).hasClass("trigger-btn-add")) {
+                    if ($('#row_a_N').is(":visible")) {
+                        $('.trigger-btn-add').text('Add new trigger');
+                        $('#row_a_N').hide();
+                        $('#row_b_N').hide();
+                        $('#name').val('');
+                        $('#name').css('border-color', '');
+                        $('#type').val('Disabled');                    
+                        $('#code1').val('');
+                        $('#code2').val('');
+                        $('#code2').css('border-color', '');
+                        $('#trigger1').val('');
+                        $('#trigger2').val(''); 
+                        $('#trigger2').css('border-color', '');                    
+                    } else {
+                        $('.trigger-btn-add').text('Cancel new trigger');
+                        $('#row_a_N').show();
+                        $('#row_b_N').show();
+                    }
+                }   
+                $('.trigger-btn').blur();
+            });               
+            $('.trigger-btn-submit').off('click').on('click', function(){                                                     
+                var data = {};
+                data.pk = 'add';
+                data.name = $('#name').val();
+                if (data.name == '') {
+                    $('#name').css('border-color', 'red');
+                    return
+                } else {
+                    $('#name').css('border-color', '');
+                }           
+                data.type = $('#type').val();
+                data.code1 = $('#code1').val();
+                data.code2 = $('#code2').val();  
+                if (data.code2 == '') {
+                    $('#code2').css('border-color', 'red');
+                    return
+                } else {
+                    $('#code2').css('border-color', '');                
+                }                                    
+                data.trigger1 = $('#trigger1').val();
+                data.trigger2 = $('#trigger2').val() ; 
+                if (data.trigger1 == '' && data.trigger2 == '') {
+                    $('#trigger2').css('border-color', 'red');
+                    return
+                } else {
+                    $('#trigger2').css('border-color', '');                
+                }
+                $.ajax({
+                    url: "/json/triggers",
+                    type: 'post',
+                    contentType: 'application/json',
+                    data: JSON.stringify(data),
+                    success: function( data, status, error ){
+                        console.log("trigger success data="+data+" status="+status+" error="+error);  
+                        if (data.status !== undefined || data.status == "error") {
+                            console.log("error!");
+                        } else {   
+                            console.log("success!");                    
+                            $('.trigger-btn-add').show();
+                            //remove all data in the forms
+                            $('#row_a_N').hide();
+                            $('#row_b_N').hide();  
+                            $('#name').val('');
+                            $('#name').css('border-color', '');
+                            $('#type').val('');
+                            $('#code1').val('');
+                            $('#code2').val('');
+                            $('#code2').css('border-color', '');  
+                            $('#trigger1').val('');
+                            $('#trigger2').val('');    
+                            $('#trigger2').css('border-color', '');
+                            changePage();
+                        }
+                    },
+                    error: function( xhr, status, error ) {
+                        console.log("trigger failure status="+status+" error="+error);  
+                    
+                    }
+                });
             });
 			row++;
 		}
@@ -3837,7 +4034,8 @@ var trigger = function() {
 
 $(document).ready(function() {
 	// Start
-	
+	changePage();
+		
 	// Increment the counter
     $.ajax({
         url: "/json/web_counter",
@@ -3845,8 +4043,7 @@ $(document).ready(function() {
         contentType: 'application/json',
         data: "{}"           //just post empty json
     });
-	
-	changePage();
+
 	//Watch for future changes in hash
 	$(window).bind('hashchange', function() {
 		changePage();
@@ -3874,7 +4071,6 @@ $(document).ready(function() {
 		}
 		//
 		var entity = $("#toolButton").attr('entity');
-//		$('#optionsModal').modal('show');
 
         $("#optionsModal").modal('show').css({
             'margin-left': function () { //Horizontal centering
@@ -4064,9 +4260,6 @@ $(document).ready(function() {
 				}
 				//Check to see if this is the login button
 				if (json_store.collections[collection].user !== undefined) {
-//					if (name == undefined) {
-//						authDetails();
-//					} 
 					opt_entity_html += "<a link-type='collection' user='"+json_store.collections[collection].user+"' class='btn btn-default btn-lg btn-block btn-list btn-login-modal' colid='"+collection+"' role='button'><i class='fa "+icon+" fa-2x fa-fw'></i>"+name+"</a>";
 				} else {	
 					opt_entity_html += "<a link-type='collection' href='"+link+"' class='btn btn-default btn-lg btn-block btn-list btn-option' colid='"+collection+"' role='button'><i class='fa "+icon+" fa-2x fa-fw'></i>"+name+"</a>";
@@ -4130,9 +4323,9 @@ $(document).ready(function() {
     });
 	
 //TODO remove me?	
-	$('#mhresponse').click( function (e) {
-		e.preventDefault();
-		$form = $(this);
+////	$('#mhresponse').click( function (e) {
+////		e.preventDefault();
+//		$form = $(this);
 		//$.ajax({
 		//	type: "POST",
 		//	url: "/SET_PASSWORD_FORM",
@@ -4141,7 +4334,7 @@ $(document).ready(function() {
 		//		console.log(data) 
 		//		}
 		//	});
-	});		
+////	});		
 });
 
 // method to dynamically load additional js script on the fly.
@@ -4174,13 +4367,7 @@ var loadModule = function(name,callback) {
         console.log("Module "+name+" already loaded");
         return 0;
     }
-    if (name == "zoneminder" || name == "all") {
-        var config = json_store.ia7_config.zoneminder;
-        if (config === undefined) {
-            console.log("no zoneminder config...");
-            if (name == "zoneminder") return 0;
-        }
-    }
+
     //loop through all modules if all
     if (modules[name].script !== undefined ) {
         for (var i = 0, len = modules[name].script.length; i < len; i++) {
@@ -4211,6 +4398,11 @@ var loadModule = function(name,callback) {
 // more info on zoneminder integration is found in ./zm.js.md
 var zoneminder = function()
 {
+    var config = json_store.ia7_config.zoneminder;
+    if (config === undefined) {
+        console.log("no zoneminder config...");
+        return 0;
+    }
     loadModule('zoneminder', function(){
         zm.init();
         var config = json_store.ia7_config.zoneminder;
@@ -4219,6 +4411,33 @@ var zoneminder = function()
         }
     });
 };
+
+(function(a) {
+    var b = {
+        NS: "jquery.longclick-",
+        delay: 700
+    };
+    a.fn.mayTriggerLongClicks = function(c) {
+        var d = a.extend(b, c);
+        var f;
+        var e;
+        return a(this).on("mousedown touchstart", function() {
+            e = false;
+            f = setTimeout(function(g) {
+                e = true;
+                a(g).trigger("longClick")
+            }, d.delay, this)
+        }).on("mouseup touchend", function() {
+            clearTimeout(f)
+        }).on("touchmove", function() {
+            clearTimeout(f)
+        }).on("click", function(g) {
+            if (e) {
+                g.stopImmediatePropagation()
+            }
+        })
+    }
+})(jQuery);
 
 
 
