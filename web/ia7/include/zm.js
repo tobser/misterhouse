@@ -31,8 +31,18 @@ var zm = {
 	connect_server: function(config) {
 		var myWebSocket;
 		var conf = config;
-		var timeout = (config.timeout === undefined ? 5500 : config.timeout);
+		var timeout = (conf.timeout === undefined ? 5500 : conf.timeout);
 		var zm_url = (conf.protocol === undefined ? 'wss': conf.protocol);
+        var zm_dir = (conf.zmdir === undefined ? '' : conf.zmdir);
+        if (zm_dir !== '')
+        {
+            zm_dir =  zm_dir.replace(/\/$/, '');
+
+            if ( zm_dir.startsWith("/") === false)
+            {
+                zm_dir = "/" + zm_dir;
+            }
+        }
 		var notify = (conf.browsernotifications  === undefined ? false: conf.browsernotifications);
 
 		if (notify){
@@ -91,7 +101,9 @@ var zm = {
 				if ($("#div-"+ id).length === 0)
 				{
 					var url = '';
-					url += 'http://' +conf.host+'/zm/cgi-bin/nph-zms?mode=jpeg';
+					url += 'http://' +conf.host;
+                    url +=  zm_dir;
+                    url += '/cgi-bin/nph-zms?mode=jpeg';
 					url += '&scale='+ (conf.scale === undefined ? '100': conf.scale);
 					url += '&maxfps=5&buffer=1000';
 					url += '&monitor='+ monitor_event.MonitorId+'&rand=1507918186';
@@ -127,6 +139,10 @@ var zm = {
 			};
 
 			function restart_timer(id){
+                if (timeout <= 0)
+                {
+                    return;
+                }
 				stop_timer(id);
 				timers[id] = setTimeout(function() {
 					$("#div-"+ id).remove() ;
