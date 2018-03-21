@@ -33,7 +33,7 @@ var zm = {
 		var conf = config;
 		var timeout = (conf.timeout === undefined ? 5500 : conf.timeout);
 		var zm_url = (conf.protocol === undefined ? 'wss': conf.protocol);
-        var cgipath = (conf.cgipath === undefined ? '' : conf.zmdir);
+        var cgipath = (conf.cgipath === undefined ? '' : conf.cgipath);
         if (cgipath !== '')
         {
             cgipath =  cgipath.replace(/\/$/, '');
